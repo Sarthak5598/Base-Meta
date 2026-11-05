@@ -51,6 +51,14 @@ export DATALENS_TEST_PG_RW="Host=localhost;Port=5433;Database=shop;Username=shop
 dotnet test
 ```
 
+### Windows notes
+
+- In PowerShell set variables with `$env:DATALENS_TEST_PG_RO = "..."`, not `export`.
+- The projects target .NET 8 but run on any newer installed runtime (`RollForward` in `Directory.Build.props`).
+- WSL works well: install the .NET SDK inside WSL, enable Docker Desktop's WSL integration, and clone the
+  repo inside the WSL filesystem (`~/`), not under `/mnt/d`, for speed. Delete any `bin/` and `obj/`
+  folders that a Windows build left behind.
+
 ## Layout
 
 ```
