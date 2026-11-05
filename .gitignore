@@ -1,0 +1,6 @@
+bin/
+obj/
+.vs/
+*.user
+# local DataLens state: app database and encryption key
+.datalens/

@@ -1,0 +1,54 @@
+﻿using System.Text.Json;
+using DataLens.Cli;
+using DataLens.Core;
+using DataLens.Infrastructure.Postgres;
+using DataLens.Infrastructure.Security;
+using DataLens.Infrastructure.Storage;
+
+const string Usage = """
+    DataLens CLI
+
+      datalens connect <name> <connection-string>   test, save, and sync a database
+      datalens sync <name>                          re-read the structure of a saved database
+      datalens show <name> [--json]                 print the stored snapshot
+      datalens list                                 list saved connections
+
+    Connection strings: "Host=localhost;Database=shop;Username=datalens_ro;Password=..."
+                     or "postgresql://user:pass@host:5432/db"
+
+    Data lives in ./.datalens (override with DATALENS_HOME).
+    """;
+
+if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
+{
+    Console.WriteLine(Usage);
+    return args.Length == 0 ? 1 : 0;
+}
+
+var home = Environment.GetEnvironmentVariable("DATALENS_HOME") ?? Path.Combine(Directory.GetCurrentDirectory(), ".datalens");
+var protector = ConnectionProtector.Create(Path.Combine(home, "key"));
+IAppStore store = new SqliteAppStore(Path.Combine(home, "app.db"), protector);
+IDatabaseConnector connector = new PostgresConnector();
+
+try
+{
+    switch (args[0])
+    {
+        case "connect" when args.Length == 3:
+            return await Commands.ConnectAsync(store, connector, args[1], args[2]);
+        case "sync" when args.Length == 2:
+            return await Commands.SyncAsync(store, connector, args[1]);
+        case "show" when args.Length is 2 or 3:
+            return await Commands.ShowAsync(store, args[1], asJson: args.Length == 3 && args[2] == "--json");
+        case "list" when args.Length == 1:
+            return await Commands.ListAsync(store);
+        default:
+            Console.Error.WriteLine(Usage);
+            return 1;
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"Error: {ex.Message}");
+    return 1;
+}

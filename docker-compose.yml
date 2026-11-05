@@ -1,0 +1,24 @@
+# Sample source database for development.
+#   docker compose up -d
+# Read-only user: Host=localhost;Port=5433;Database=shop;Username=datalens_ro;Password=readonly
+# Admin user (can write, triggers the warning): Username=shop_admin;Password=admin
+services:
+  sample-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: shop_admin
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5433:5432"   # 5433 so it does not clash with a Postgres already on 5432
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - sample-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop_admin -d shop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  sample-db-data:
