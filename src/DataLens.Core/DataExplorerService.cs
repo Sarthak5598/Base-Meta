@@ -48,11 +48,7 @@ public sealed class DataExplorerService(IAppStore store, IDatabaseConnector conn
                 DataLensError.BadRequest,
                 $"Browsing stops at row {MaxOffset:N0}. Sort the table to bring the rows you want to the front.");
 
-        var connection = await store.FindConnectionAsync(request.Connection, ct)
-            ?? throw new DataLensException(DataLensError.NotFound, $"No saved connection called '{request.Connection}'.");
-
-        var snapshot = await store.GetLatestSnapshotAsync(connection.Id, ct)
-            ?? throw new DataLensException(DataLensError.NotFound, "This connection has not been synced yet.");
+        var (connection, snapshot) = await SnapshotLookup.LoadAsync(store, request.Connection, ct);
 
         var table = snapshot.Metadata.FindTable(request.Schema, request.Table)
             ?? throw new DataLensException(

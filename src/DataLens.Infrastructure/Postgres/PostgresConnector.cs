@@ -79,6 +79,7 @@ public sealed class PostgresConnector : IDatabaseConnector
             // is allowed to: every query runs read-only and is rolled back, never committed.
             await using var tx = await conn.BeginTransactionAsync(ct);
             await RunAsync(conn, tx, "SET TRANSACTION READ ONLY", ct);
+            await RunAsync(conn, tx, "SET LOCAL TIME ZONE 'UTC'", ct);   // same buckets whatever the server's zone
             await RunAsync(conn, tx, $"SET LOCAL statement_timeout = {(int)options.Timeout.TotalMilliseconds}", ct);
 
             await using var cmd = new NpgsqlCommand(query.Sql, conn, tx);

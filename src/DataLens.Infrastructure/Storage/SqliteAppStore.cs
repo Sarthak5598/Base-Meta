@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using DataLens.Core;
 using DataLens.Core.Models;
 using DataLens.Infrastructure.Postgres;
@@ -12,13 +11,8 @@ namespace DataLens.Infrastructure.Storage;
 /// The app database. Plain SQL on SQLite, no ORM. Holds saved connections (encrypted) and the
 /// latest schema snapshot for each. It never holds any of the source database's row data.
 /// </summary>
-public sealed class SqliteAppStore : IAppStore
+public sealed partial class SqliteAppStore : IAppStore, IContentStore
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
-
     private readonly string _connectionString;
     private readonly ConnectionProtector _protector;
     private bool _initialised;
@@ -59,6 +53,25 @@ public sealed class SqliteAppStore : IAppStore
                   version       INTEGER NOT NULL,
                   metadata_json TEXT NOT NULL,
                   synced_at     TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS saved_query (
+                  id            TEXT PRIMARY KEY,
+                  connection_id TEXT NOT NULL REFERENCES connection(id) ON DELETE CASCADE,
+                  name          TEXT NOT NULL,
+                  query_json    TEXT NOT NULL,
+                  chart_json    TEXT NOT NULL,
+                  created_at    TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS dashboard (
+                  id            TEXT PRIMARY KEY,
+                  name          TEXT NOT NULL,
+                  created_at    TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS dashboard_card (
+                  dashboard_id  TEXT NOT NULL REFERENCES dashboard(id) ON DELETE CASCADE,
+                  query_id      TEXT NOT NULL REFERENCES saved_query(id) ON DELETE CASCADE,
+                  position      INTEGER NOT NULL,
+                  PRIMARY KEY (dashboard_id, query_id)
                 );
                 """;
             await cmd.ExecuteNonQueryAsync(ct);
@@ -158,7 +171,7 @@ public sealed class SqliteAppStore : IAppStore
                 """;
             write.Parameters.AddWithValue("$id", connectionId);
             write.Parameters.AddWithValue("$version", version);
-            write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(metadata, Json));
+            write.Parameters.AddWithValue("$json", JsonSerializer.Serialize(metadata, DataLensJson.Options));
             write.Parameters.AddWithValue("$at", syncedAt.ToString("O"));
             await write.ExecuteNonQueryAsync(ct);
         }
@@ -178,7 +191,7 @@ public sealed class SqliteAppStore : IAppStore
         await using var r = await cmd.ExecuteReaderAsync(ct);
         if (!await r.ReadAsync(ct)) return null;
 
-        var metadata = JsonSerializer.Deserialize<DbMetadata>(r.GetString(1), Json)
+        var metadata = JsonSerializer.Deserialize<DbMetadata>(r.GetString(1), DataLensJson.Options)
             ?? throw new InvalidOperationException("The stored snapshot is empty.");
         return new StoredSnapshot(connectionId, r.GetInt32(0), DateTimeOffset.Parse(r.GetString(2)), metadata);
     }

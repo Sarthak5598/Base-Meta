@@ -42,3 +42,35 @@ public interface IAppStore
 
     Task<StoredSnapshot?> GetLatestSnapshotAsync(string connectionId, CancellationToken ct = default);
 }
+
+/// <summary>Saved questions and dashboards. Questions are stored as a query model, never as results.</summary>
+public interface IContentStore
+{
+    Task<SavedQuery> SaveQueryAsync(
+        string connectionId, string name, QueryDefinition query, ChartConfig chart, CancellationToken ct = default);
+
+    /// <summary>Null when there is no such question.</summary>
+    Task<SavedQuery?> UpdateQueryAsync(
+        string id, string name, QueryDefinition query, ChartConfig chart, CancellationToken ct = default);
+
+    Task<SavedQuery?> GetQueryAsync(string id, CancellationToken ct = default);
+
+    /// <summary>All questions, or only those of one connection.</summary>
+    Task<IReadOnlyList<SavedQuery>> ListQueriesAsync(string? connectionId = null, CancellationToken ct = default);
+
+    /// <summary>Also removes the question from every dashboard.</summary>
+    Task<bool> DeleteQueryAsync(string id, CancellationToken ct = default);
+
+    Task<Dashboard> CreateDashboardAsync(string name, CancellationToken ct = default);
+
+    Task<Dashboard?> GetDashboardAsync(string id, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Dashboard>> ListDashboardsAsync(CancellationToken ct = default);
+
+    Task<bool> DeleteDashboardAsync(string id, CancellationToken ct = default);
+
+    /// <summary>Adds at the end. Adding a question that is already there changes nothing. Null if either does not exist.</summary>
+    Task<Dashboard?> AddCardAsync(string dashboardId, string queryId, CancellationToken ct = default);
+
+    Task<Dashboard?> RemoveCardAsync(string dashboardId, string queryId, CancellationToken ct = default);
+}

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DataLens.Api.Endpoints;
 using DataLens.Core;
 using DataLens.Core.Models;
 using DataLens.Core.Query;
@@ -18,11 +19,14 @@ var home = builder.Configuration["DATALENS_HOME"]   // environment variable, or 
     ?? Path.Combine(Directory.GetCurrentDirectory(), ".datalens");
 
 builder.Services.AddSingleton(ConnectionProtector.Create(Path.Combine(home, "key")));
-builder.Services.AddSingleton<IAppStore>(sp =>
+builder.Services.AddSingleton(sp =>
     new SqliteAppStore(Path.Combine(home, "app.db"), sp.GetRequiredService<ConnectionProtector>()));
+builder.Services.AddSingleton<IAppStore>(sp => sp.GetRequiredService<SqliteAppStore>());
+builder.Services.AddSingleton<IContentStore>(sp => sp.GetRequiredService<SqliteAppStore>());
 builder.Services.AddSingleton<IDatabaseConnector, PostgresConnector>();
 builder.Services.AddSingleton<ConnectionService>();
 builder.Services.AddSingleton<DataExplorerService>();
+builder.Services.AddSingleton<QuestionService>();
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
@@ -103,6 +107,8 @@ api.MapGet("/connections/{id}/rows", async (
     return Results.Ok(await explorer.PreviewAsync(
         new PreviewRequest(id, schema, table, page, pageSize, sort, direction), ct));
 });
+
+api.MapQuestionEndpoints();
 
 api.MapFallback(() => Results.NotFound(new { error = "Unknown endpoint." }));
 
