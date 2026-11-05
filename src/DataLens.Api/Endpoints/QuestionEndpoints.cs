@@ -60,10 +60,15 @@ public static class QuestionEndpoints
             await content.DeleteQueryAsync(id, ct) ? Results.NoContent() : throw MissingQuery(id));
 
         // Run a saved question: this is what a dashboard card does. Always live, never a stored result.
-        api.MapPost("/queries/{id}/run", async (string id, IContentStore content, QuestionService questions, CancellationToken ct) =>
+        // The body is optional: a dashboard sends its date range and granularity, which apply to this run only.
+        // Read by hand so that no body at all (no content type either) is a plain run, not "unknown endpoint".
+        api.MapPost("/queries/{id}/run", async (string id, HttpRequest request, IContentStore content, QuestionService questions, CancellationToken ct) =>
         {
             var saved = await content.GetQueryAsync(id, ct) ?? throw MissingQuery(id);
-            return Results.Ok(new { query = saved, result = await questions.RunAsync(saved.ConnectionId, saved.Query, ct) });
+            var time = request.ContentLength is > 0
+                ? await request.ReadFromJsonAsync<TimeFilter>(ct)
+                : null;
+            return Results.Ok(new { query = saved, result = await questions.RunAsync(saved.ConnectionId, saved.Query, time, ct) });
         });
 
         // ---- dashboards ----------------------------------------------------------------------

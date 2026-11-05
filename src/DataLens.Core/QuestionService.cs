@@ -14,7 +14,8 @@ public sealed record QuestionResult(
     bool LimitReached,
     long DurationMs,
     string Sql,
-    IReadOnlyDictionary<string, object?> Parameters);
+    IReadOnlyDictionary<string, object?> Parameters,
+    TimeInfo? Time = null);
 
 /// <summary>Finds a saved connection and its latest snapshot, or explains what is missing.</summary>
 internal static class SnapshotLookup
@@ -43,20 +44,29 @@ public sealed class QuestionService(IAppStore store, IDatabaseConnector connecto
         return new CompiledPreview(compiled.Query.Sql, compiled.Query.Parameters, compiled.Columns);
     }
 
-    public async Task<QuestionResult> RunAsync(string connection, QueryDefinition query, CancellationToken ct = default)
+    public Task<QuestionResult> RunAsync(string connection, QueryDefinition query, CancellationToken ct = default) =>
+        RunAsync(connection, query, null, ct);
+
+    /// <summary>
+    /// Runs a question, first applying a dashboard's date range and granularity if given. The question
+    /// itself is not changed; the result says which date column the range was applied to.
+    /// </summary>
+    public async Task<QuestionResult> RunAsync(
+        string connection, QueryDefinition query, TimeFilter? time, CancellationToken ct = default)
     {
         var (saved, snapshot) = await SnapshotLookup.LoadAsync(store, connection, ct);
-        var compiled = QueryCompiler.Compile(query, snapshot.Metadata);
+        var (scoped, info) = TimeScope.Apply(query, snapshot.Metadata, time);
+        var compiled = QueryCompiler.Compile(scoped, snapshot.Metadata);
 
         var connectionString = await store.GetConnectionStringAsync(saved.Id, ct)
             ?? throw new DataLensException(DataLensError.NotFound, "The saved connection string is missing.");
 
         var result = await connector.ExecuteAsync(
-            connectionString, compiled.Query, ExecOptions.Default with { MaxRows = query.Limit }, ct);
+            connectionString, compiled.Query, ExecOptions.Default with { MaxRows = scoped.Limit }, ct);
 
         return new QuestionResult(
             compiled.Columns, result.Rows,
-            LimitReached: result.Rows.Count >= query.Limit,
-            result.DurationMs, compiled.Query.Sql, compiled.Query.Parameters);
+            LimitReached: result.Rows.Count >= scoped.Limit,
+            result.DurationMs, compiled.Query.Sql, compiled.Query.Parameters, info);
     }
 }

@@ -27,6 +27,9 @@ builder.Services.AddSingleton<IDatabaseConnector, PostgresConnector>();
 builder.Services.AddSingleton<ConnectionService>();
 builder.Services.AddSingleton<DataExplorerService>();
 builder.Services.AddSingleton<QuestionService>();
+// Let bad requests (a malformed date, an unknown option) reach the error handler below, so the browser
+// gets a JSON message instead of a bare, empty 400.
+builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
@@ -46,6 +49,8 @@ app.Use(async (context, next) =>
             DataLensException { Error: DataLensError.NotFound } e => (404, e.Message),
             DataLensException e => (400, e.Message),
             FormatException e => (400, e.Message),
+            BadHttpRequestException => (400, "The request could not be read. Check the dates and options you sent."),
+            System.Text.Json.JsonException => (400, "The request could not be read. Check the dates and options you sent."),
             QueryFailedException { Reason: QueryFailure.Timeout } e => (504, e.Message),
             QueryFailedException { Reason: QueryFailure.PermissionDenied } e => (403, e.Message),
             QueryFailedException { Reason: QueryFailure.ObjectNotFound } e => (409, e.Message),

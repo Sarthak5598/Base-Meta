@@ -30,6 +30,9 @@ Every chart is a live query against the source DB at request time.
 | 14 | `query/compile` validates a question and returns its SQL without touching the source DB | The builder shows live SQL as you type. Saving also validates, so a saved question is never broken from the start |
 | 15 | Saved questions store the query model and chart choice, never results. Dashboards re-run every card | Always current. As slow as the source database |
 | 16 | Charts: bar, line, pie, plus a table view of every result. Palette validated for colour-blind separation. Time axes stay as columns. Pies fold past six slices into "Other" and always have a legend | Bars compare better than pies, but pie was asked for |
+| 17 | A dashboard's date range and granularity are applied when a card runs, never saved into the question | Same as Mixpanel boards: opening a question alone still shows what it was saved with. `TimeScope` does it, as a pure function with tests |
+| 18 | The date column a range applies to is the one the question already buckets by time, else the source table's most date-like column (`created_at`, `happened_at`...). Tables with none say "no date field" | No per-card setting to configure. A card is honest about what it filtered |
+| 19 | Adding a card starts on the dashboard: choose a kind, pick a table, get a pre-filled question that is already run, name suggested | Saving a question elsewhere and then hunting for it on a dashboard was backwards |
 | 10 | Only the string the user typed is stored. Our defaults (5s connect timeout) are applied at connect time | Defaults can change without touching saved connections |
 
 ## Flows

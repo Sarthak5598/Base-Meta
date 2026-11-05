@@ -403,4 +403,136 @@ public sealed class PostgresQuestionTests : IDisposable
         Assert.Equal(QueryFailure.ObjectNotFound, ex.Reason);
         Assert.Contains("Re-sync", ex.Message);
     }
+
+    // ---- a dashboard's date range and granularity ------------------------------------------
+
+    private async Task<QuestionResult> RunScopedAsync(QueryDefinition q, TimeFilter time) =>
+        await (await ServiceAsync()).RunAsync("shop", q, time);
+
+    private static QueryDefinition PerPeriod(DateBucket bucket = DateBucket.Month) => new(T("orders"),
+        GroupBy: new[] { new Grouping(C("created_at"), bucket) },
+        Aggregations: new[] { new Aggregation(AggFn.Count) });
+
+    private static DateOnly TodayUtc => DateOnly.FromDateTime(DateTime.UtcNow);
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_date_range_matches_hand_written_sql_including_the_whole_last_day()
+    {
+        var from = TodayUtc.AddDays(-92);
+        var to = TodayUtc;
+
+        var result = await RunScopedAsync(PerPeriod(), new TimeFilter(from, to));
+
+        var expected = await ExpectedAsync($@"
+            SELECT date_trunc('month', created_at) , count(*) FROM orders
+            WHERE created_at >= '{from:yyyy-MM-dd}' AND created_at < '{to.AddDays(1):yyyy-MM-dd}'
+            GROUP BY 1 ORDER BY 1");
+
+        Assert.Equal("orders.created_at", result.Time!.Column);
+        Assert.True(result.Time.RangeApplied);
+        Assert.Equal(expected.Select(r => L(r[1])), result.Rows.Select(r => L(r[1])));
+        Assert.Equal(expected.Select(r => (string)r[0]!), result.Rows.Select(r => (string)r[0]!));
+        Assert.InRange(result.Rows.Sum(r => L(r[1])), 1, 1999);   // a real slice, neither empty nor everything
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task One_day_returns_that_whole_day()
+    {
+        var day = (string)(await ExpectedAsync(
+            "SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') FROM orders ORDER BY id LIMIT 1"))[0][0]!;
+        var d = DateOnly.Parse(day);
+
+        var result = await RunScopedAsync(
+            new QueryDefinition(T("orders"), Aggregations: new[] { new Aggregation(AggFn.Count) }), new TimeFilter(d, d));
+
+        Assert.Equal(await ExpectedCountAsync($"SELECT count(*) FROM orders WHERE (created_at AT TIME ZONE 'UTC')::date = '{day}'"),
+            L(result.Rows[0][0]));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Granularity_changes_how_a_trend_is_bucketed_without_changing_the_total()
+    {
+        var range = new TimeFilter(TodayUtc.AddDays(-400), TodayUtc);
+        var total = 2000L;
+
+        foreach (var (bucket, check) in new (DateBucket, Action<DateTimeOffset>)[]
+                 {
+                     (DateBucket.Day, d => Assert.Equal(TimeSpan.Zero, d.TimeOfDay)),
+                     (DateBucket.Week, d => Assert.Equal(DayOfWeek.Monday, d.DayOfWeek)),
+                     (DateBucket.Month, d => Assert.Equal(1, d.Day)),
+                     (DateBucket.Quarter, d => Assert.True(d.Day == 1 && d.Month % 3 == 1)),
+                     (DateBucket.Year, d => Assert.True(d.Day == 1 && d.Month == 1)),
+                 })
+        {
+            // the saved question says "by month"; the dashboard asks for something else
+            var result = await RunScopedAsync(PerPeriod(DateBucket.Month), range with { Granularity = bucket });
+
+            Assert.True(result.Time!.GranularityApplied, bucket.ToString());
+            Assert.Equal(total, result.Rows.Sum(r => L(r[1])));
+            Assert.All(result.Rows, r => check(DateTimeOffset.Parse((string)r[0]!)));
+        }
+
+        var days = (await RunScopedAsync(PerPeriod(), range with { Granularity = DateBucket.Day })).Rows.Count;
+        var years = (await RunScopedAsync(PerPeriod(), range with { Granularity = DateBucket.Year })).Rows.Count;
+        Assert.True(days > 100 && years <= 2, $"days={days} years={years}");
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_table_without_a_date_column_ignores_the_dashboard_range()
+    {
+        var q = new QueryDefinition(T("order_items"), Aggregations: new[] { new Aggregation(AggFn.Count) });
+
+        var plain = await RunAsync(q);
+        var scoped = await RunScopedAsync(q, new TimeFilter(TodayUtc.AddDays(-7), TodayUtc, DateBucket.Week));
+
+        Assert.Equal(L(plain.Rows[0][0]), L(scoped.Rows[0][0]));
+        Assert.Null(scoped.Time!.Column);
+        Assert.False(scoped.Time.RangeApplied);
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_question_not_grouped_by_time_still_gets_the_range_on_the_tables_own_date()
+    {
+        var from = TodayUtc.AddDays(-30);
+        var result = await RunScopedAsync(
+            new QueryDefinition(T("legacy_events"),
+                GroupBy: new[] { new Grouping(C("event")) }, Aggregations: new[] { new Aggregation(AggFn.Count) }),
+            new TimeFilter(from, TodayUtc, DateBucket.Week));
+
+        var expected = await ExpectedAsync($@"
+            SELECT event, count(*) FROM legacy_events
+            WHERE happened_at >= '{from:yyyy-MM-dd}' AND happened_at < '{TodayUtc.AddDays(1):yyyy-MM-dd}'
+            GROUP BY event ORDER BY event");
+
+        Assert.Equal("legacy_events.happened_at", result.Time!.Column);
+        Assert.False(result.Time.GranularityApplied);   // nothing there to bucket
+        Assert.Equal(expected.Select(r => ((string)r[0]!, L(r[1]))), result.Rows.Select(r => ((string)r[0]!, L(r[1]))));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_range_with_nothing_in_it_is_an_empty_result_not_an_error()
+    {
+        var result = await RunScopedAsync(PerPeriod(), new TimeFilter(TodayUtc.AddDays(10), TodayUtc.AddDays(20)));
+        Assert.Empty(result.Rows);
+        Assert.True(result.Time!.RangeApplied);
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task The_range_works_through_a_join_on_the_joined_tables_date()
+    {
+        var from = TodayUtc.AddDays(-300);
+        var result = await RunScopedAsync(new QueryDefinition(T("orders"),
+                Joins: new[] { new JoinDef(T("users"), T("orders"), "orders_user_id_fkey") },
+                GroupBy: new[] { new Grouping(C("country", "users")) },
+                Aggregations: new[] { new Aggregation(AggFn.Count) }),
+            new TimeFilter(from, TodayUtc));
+
+        // no time grouping, so the source table's created_at (orders) is the one scoped
+        var expected = await ExpectedAsync($@"
+            SELECT u.country, count(*) FROM orders o JOIN users u ON u.id = o.user_id
+            WHERE o.created_at >= '{from:yyyy-MM-dd}' AND o.created_at < '{TodayUtc.AddDays(1):yyyy-MM-dd}'
+            GROUP BY u.country ORDER BY u.country");
+        Assert.Equal("orders.created_at", result.Time!.Column);
+        Assert.Equal(expected.Select(r => ((string)r[0]!, L(r[1]))), result.Rows.Select(r => ((string)r[0]!, L(r[1]))));
+    }
 }

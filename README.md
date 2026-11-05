@@ -39,7 +39,11 @@ Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localh
 - **New question**: pick a table, add filters, summaries and groupings, optionally add related tables (joined along
   foreign keys, no `ON` clause to write). **Show SQL** displays exactly what will run. Press **Run**, then view the
   result as a table, bar, line or pie chart, and save it.
-- **Saved questions** and **Dashboards**: put questions side by side. Every card runs its question live.
+- **Dashboards**: **+ Add card**, choose Line chart, Bar chart, Pie chart or Table, pick a table, and it is
+  pre-filled and already run. Press **Add to dashboard**. The date range (last 7 days ... this year, all time, or
+  a custom range) and the period (day, week, month, quarter, year) at the top apply to every card, and are
+  remembered per dashboard. Saved questions can also be added from the same dialog.
+- **Saved questions**: everything you have made. Open one to edit it.
 
 The API listens on this machine only.
 

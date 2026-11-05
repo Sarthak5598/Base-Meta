@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { typeTitle } from './AddCardDialog';
 import { api } from './api';
 import { fitChart, suggestChart } from './charts';
 import {
@@ -18,6 +19,8 @@ import {
   opsFor,
   optionIdOf,
   removeJoin,
+  starterFor,
+  suggestName,
   tableKey,
   tablesInDraft,
   type ColumnOption,
@@ -27,6 +30,7 @@ import {
 import { ResultView } from './ResultView';
 import type {
   ChartConfig,
+  ChartType,
   CompiledPreview,
   QueryDefinition,
   QuestionResult,
@@ -44,6 +48,14 @@ interface Props {
   /** A table to start from, e.g. when coming from the table browser. */
   startTable: TableRef | null;
   onSaved: (query: SavedQuery) => void;
+  /** Set when this question is being made for, or edited from, a dashboard. */
+  dashboard?: { id: string; name: string; mode: 'add' | 'edit' } | null;
+  /** The kind of card chosen on the dashboard. Pre-fills the question and the chart. */
+  presetType?: ChartType | null;
+  /** Called after a dashboard card is added or changed. */
+  onDone?: () => void;
+  /** Back to the dashboard without saving. */
+  onCancel?: () => void;
 }
 
 interface Preview extends CompiledPreview {
@@ -55,20 +67,27 @@ interface Preview extends CompiledPreview {
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 const refOf = (t: Table): TableRef => ({ schema: t.schema, table: t.name });
 
-export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }: Props) {
-  const [draft, setDraft] = useState<Draft>(() =>
-    saved ? draftFromQuery(saved.query) : emptyDraft(startTable ?? null),
-  );
+export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, dashboard = null, presetType = null, onDone, onCancel }: Props) {
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (saved) return draftFromQuery(saved.query);
+    const table = startTable ? tables.find((t) => t.schema === startTable.schema && t.name === startTable.table) : undefined;
+    return table && presetType ? { ...emptyDraft(startTable), ...starterFor(presetType, table).draft } : emptyDraft(startTable ?? null);
+  });
+  const [hint, setHint] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [result, setResult] = useState<QuestionResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const [chart, setChart] = useState<ChartConfig>(saved?.chart ?? { type: 'table' });
-  const chartTouched = useRef(saved !== null);
+  const [chart, setChart] = useState<ChartConfig>(saved?.chart ?? { type: presetType ?? 'table' });
+  const chartTouched = useRef(saved !== null || presetType !== null);
+  // after choosing a table for a dashboard card, show the result straight away
+  const autoRunNext = useRef(false);
   const [showSql, setShowSql] = useState(false);
 
   const [name, setName] = useState(saved?.name ?? '');
+  const nameTouched = useRef(saved !== null);
+  const [addedToDashboard, setAddedToDashboard] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(saved?.id ?? null);
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
@@ -150,6 +169,19 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }
     }
   }, [saved, preview, run]);
 
+  useEffect(() => {
+    if (autoRunNext.current && preview) {
+      autoRunNext.current = false;
+      void run(preview.query);
+    }
+  }, [preview, run]);
+
+  // until the user types a name, keep suggesting one that matches the question
+  useEffect(() => {
+    if (result && !nameTouched.current) setName(suggestName(draft));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+
   const changeChart = (next: ChartConfig) => {
     chartTouched.current = true;
     setChart(next);
@@ -167,8 +199,17 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }
         ? await api.updateQuery(savedId, connectionId, name.trim(), preview.query, fitted)
         : await api.saveQuery(connectionId, name.trim(), preview.query, fitted);
       setSavedId(done.id);
-      setSaveNote(savedId ? 'Changes saved.' : 'Saved. Find it under Saved questions, or add it to a dashboard there.');
+
+      if (dashboard?.mode === 'add' && !addedToDashboard) {
+        await api.addCard(dashboard.id, done.id);
+        setAddedToDashboard(true);
+      }
+
+      setSaveNote(
+        dashboard ? 'Saved.' : savedId ? 'Changes saved.' : 'Saved. Find it under Saved questions, or add it to a dashboard there.',
+      );
       onSaved(done);
+      if (dashboard) onDone?.();
     } catch (e) {
       setSaveNote(message(e));
     } finally {
@@ -180,7 +221,10 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }
 
   const pickTable = (key: string) => {
     const t = tables.find((x) => tableKey(refOf(x)) === key);
-    setDraft(emptyDraft(t ? refOf(t) : null));
+    const starter = t && presetType ? starterFor(presetType, t) : null;
+    setDraft({ ...emptyDraft(t ? refOf(t) : null), ...(starter?.draft ?? {}) });
+    setHint(starter?.note ?? null);
+    autoRunNext.current = starter !== null && starter.note === null;
     setResult(null);
     setRunError(null);
   };
@@ -230,7 +274,25 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }
   return (
     <div className="builder">
       <form className="builder-form" onSubmit={(e) => e.preventDefault()}>
-        <h1>{savedId ? 'Edit question' : 'New question'}</h1>
+        {dashboard && (
+          <button type="button" className="link-button small crumb" onClick={onCancel}>
+            ← Back to {dashboard.name}
+          </button>
+        )}
+        <h1>
+          {dashboard
+            ? dashboard.mode === 'add'
+              ? `Add a ${typeTitle(presetType ?? chart.type).toLowerCase()} to ${dashboard.name}`
+              : `Edit card on ${dashboard.name}`
+            : savedId
+              ? 'Edit question'
+              : 'New question'}
+        </h1>
+        {hint && (
+          <div className="banner warn" role="status">
+            {hint}
+          </div>
+        )}
 
         <Section title="Data">
           <label className="field">
@@ -570,10 +632,18 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved }
           <div className="save">
             <label className="field grow">
               <span className="field-label">Name this question</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Orders per month" maxLength={100} />
+              <input
+                value={name}
+                onChange={(e) => {
+                  nameTouched.current = true;
+                  setName(e.target.value);
+                }}
+                placeholder="Orders per month"
+                maxLength={100}
+              />
             </label>
             <button type="button" className="primary" onClick={save} disabled={saving || !name.trim() || !preview}>
-              {saving ? 'Saving…' : savedId ? 'Save changes' : 'Save question'}
+              {saving ? 'Saving…' : dashboard?.mode === 'add' ? 'Add to dashboard' : savedId ? 'Save changes' : 'Save question'}
             </button>
             {saveNote && (
               <p className="muted small save-note" role="status">

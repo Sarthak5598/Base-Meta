@@ -1,6 +1,7 @@
 import type { ChartConfig, ColumnKind, ResultColumn } from './types';
 
-export const MAX_CHART_ROWS = 200;
+// a year by day is 366 points: a line handles that, so the cap sits above it
+export const MAX_CHART_ROWS = 400;
 export const MAX_PIE_SLICES = 6;
 
 const isTime = (k: ColumnKind) => k === 'date' || k === 'timestamp';

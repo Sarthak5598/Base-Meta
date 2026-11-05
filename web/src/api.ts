@@ -10,6 +10,7 @@ import type {
   SavedQuery,
   SchemaResponse,
   SortDirection,
+  TimeFilter,
 } from './types';
 
 /** An error with a message the API wrote for the user. */
@@ -81,8 +82,9 @@ export const api = {
 
   deleteQuery: (id: string) => request<null>(`/api/queries/${enc(id)}`, { method: 'DELETE' }),
 
-  runSaved: (id: string) =>
-    request<{ query: SavedQuery; result: QuestionResult }>(`/api/queries/${enc(id)}/run`, json('POST', {})),
+  /** Runs a saved question. A dashboard passes its date range and granularity; they apply to this run only. */
+  runSaved: (id: string, time: TimeFilter = {}) =>
+    request<{ query: SavedQuery; result: QuestionResult }>(`/api/queries/${enc(id)}/run`, json('POST', time)),
 
   // ---- dashboards
   dashboards: () => request<Dashboard[]>('/api/dashboards'),

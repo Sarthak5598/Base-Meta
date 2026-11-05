@@ -301,4 +301,85 @@ public sealed class ApiQuestionTests : IDisposable
         var run = await _http.PostAsync($"/api/queries/{qid}/run", Json("{}"));
         Assert.DoesNotContain("readonly", await run.Content.ReadAsStringAsync());
     }
+
+    // ---- a dashboard's date range and granularity ------------------------------------------
+
+    private const string OrdersPerMonth = """
+        { "source": {"schema":"public","table":"orders"},
+          "groupBy": [ { "column": {"name":"created_at"}, "bucket": "month" } ],
+          "aggregations": [ { "fn": "count" } ] }
+        """;
+
+    private async Task<string> SaveOrdersPerMonthAsync(string connectionId) =>
+        (await Post("/api/queries", SaveBody(connectionId, "Orders per month", OrdersPerMonth, """{"type":"line","x":"created_at","y":"count"}""")))
+            .Body.GetProperty("id").GetString()!;
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Running_a_saved_question_with_a_date_range_and_granularity()
+    {
+        var id = await ConnectShopAsync();
+        var qid = await SaveOrdersPerMonthAsync(id);
+        var today = DateTime.UtcNow.Date;
+
+        var (plainStatus, plain) = await Post($"/api/queries/{qid}/run", "{}");
+        var (scopedStatus, scoped) = await Post($"/api/queries/{qid}/run",
+            $$"""{ "from": "{{today.AddDays(-60):yyyy-MM-dd}}", "to": "{{today:yyyy-MM-dd}}", "granularity": "week" }""");
+
+        Assert.Equal(HttpStatusCode.OK, plainStatus);
+        Assert.Equal(HttpStatusCode.OK, scopedStatus);
+
+        var plainRows = plain.GetProperty("result").GetProperty("rows");
+        var scopedRows = scoped.GetProperty("result").GetProperty("rows");
+        Assert.True(plainRows.GetArrayLength() >= 12);                                  // a year of months
+        Assert.True(scopedRows.GetArrayLength() is >= 8 and <= 10);                     // 60 days of weeks
+        Assert.All(scopedRows.EnumerateArray(), r => Assert.Equal(DayOfWeek.Monday, DateTime.Parse(r[0].GetString()!).DayOfWeek));
+
+        var time = scoped.GetProperty("result").GetProperty("time");
+        Assert.Equal("orders.created_at", time.GetProperty("column").GetString());
+        Assert.True(time.GetProperty("rangeApplied").GetBoolean());
+        Assert.True(time.GetProperty("granularityApplied").GetBoolean());
+
+        // the saved question itself is untouched
+        var stored = (await Get($"/api/queries/{qid}")).Body.GetProperty("query");
+        Assert.Equal("month", stored.GetProperty("groupBy")[0].GetProperty("bucket").GetString());
+        Assert.False(stored.TryGetProperty("filters", out var f) && f.ValueKind == JsonValueKind.Array && f.GetArrayLength() > 0);
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_run_with_no_body_at_all_still_works()
+    {
+        var id = await ConnectShopAsync();
+        var qid = await SaveOrdersPerMonthAsync(id);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/queries/{qid}/run");
+        using var response = await _http.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_backwards_date_range_is_a_400_with_a_message()
+    {
+        var id = await ConnectShopAsync();
+        var qid = await SaveOrdersPerMonthAsync(id);
+
+        var (status, body) = await Post($"/api/queries/{qid}/run", """{ "from": "2026-03-31", "to": "2026-01-01" }""");
+
+        Assert.Equal(HttpStatusCode.BadRequest, status);
+        Assert.Contains("start date is after the end date", Error(body));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_bad_date_or_granularity_is_a_400_not_a_crash()
+    {
+        var id = await ConnectShopAsync();
+        var qid = await SaveOrdersPerMonthAsync(id);
+
+        foreach (var body in new[] { """{ "from": "soon" }""", """{ "granularity": "fortnight" }""", """{ "to": 5 }""", "not json" })
+        {
+            var (status, json) = await Post($"/api/queries/{qid}/run", body);
+            Assert.Equal(HttpStatusCode.BadRequest, status);
+            Assert.Contains("could not be read", Error(json));   // a message the browser can show, not an empty 400
+        }
+    }
 }

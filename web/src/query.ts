@@ -1,5 +1,6 @@
 import type {
   AggFn,
+  ChartType,
   Column,
   ColumnKind,
   ColumnRef,
@@ -364,4 +365,86 @@ export function describeQuery(q: QueryDefinition): string {
   if (what.length) parts.push(what.join(' '));
   if (q.filters?.length) parts.push(`${q.filters.length} filter${q.filters.length === 1 ? '' : 's'}`);
   return parts.join(' · ');
+}
+
+// ---- starting points for a card ----------------------------------------------------------------
+
+const DATE_LIKE = /(^|_)(created|updated|ordered|placed|date|time|at|on)($|_)|_at$|_on$|date$/i;
+const CATEGORY_LIKE = /(status|type|category|country|state|kind|event|method|plan|region|channel|source)/i;
+const UNIQUE_LIKE = /(^|_)(id|email|name|uuid|url)$/i;
+
+const bestDate = (t: Table) => {
+  const dates = t.columns.filter((c) => isDateKind(c.kind));
+  return dates.find((c) => DATE_LIKE.test(c.name)) ?? dates[0];
+};
+
+const bestCategory = (t: Table) => {
+  const texts = t.columns.filter((c) => c.kind === 'text');
+  return (
+    texts.find((c) => CATEGORY_LIKE.test(c.name)) ??
+    texts.find((c) => !UNIQUE_LIKE.test(c.name)) ??
+    t.columns.find((c) => c.kind === 'boolean')
+  );
+};
+
+/**
+ * What to pre-fill when someone adds a card of this kind: a count over time for a line, a count per
+ * category for a bar or pie, nothing for a table. They can change all of it. The note is shown when the
+ * table has nothing suitable.
+ */
+export function starterFor(type: ChartType, table: Table): { draft: Partial<Draft>; note: string | null } {
+  if (type === 'table') return { draft: {}, note: null };
+
+  const count = [{ id: newId(), fn: 'count' as const, column: null }];
+
+  if (type === 'line') {
+    const date = bestDate(table);
+    if (!date)
+      return {
+        draft: {},
+        note: `${table.name} has no date column, so a line chart has no time to follow. Try another table, or a bar chart.`,
+      };
+    return {
+      draft: { aggregations: count, groups: [{ id: newId(), column: { name: date.name }, bucket: 'month' }] },
+      note: null,
+    };
+  }
+
+  const category = bestCategory(table);
+  if (!category)
+    return {
+      draft: {},
+      note: `${table.name} has no obvious category column to split by. Choose one under Summarize, or try a table.`,
+    };
+  return {
+    draft: { aggregations: count, groups: [{ id: newId(), column: { name: category.name }, bucket: null }] },
+    note: null,
+  };
+}
+
+const titleCase = (s: string) => {
+  const spaced = s.replace(/_/g, ' ').trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
+/** "Orders per month", "Orders by status", "Total price by category": a name to start from. */
+export function suggestName(d: Draft): string {
+  if (!d.source) return '';
+  const base = titleCase(d.source.table);
+
+  const first = d.aggregations[0];
+  const col = first?.column?.name ?? '';
+  const metric = !first
+    ? base
+    : {
+        count: base,
+        countDistinct: `Distinct ${col}`,
+        sum: `Total ${col}`,
+        avg: `Average ${col}`,
+        min: `Smallest ${col}`,
+        max: `Largest ${col}`,
+      }[first.fn];
+
+  const dims = d.groups.map((g) => (g.bucket ? `per ${g.bucket}` : `by ${g.column.name}`));
+  return [metric, ...dims].join(' ');
 }

@@ -145,6 +145,19 @@ export interface CompiledPreview {
   columns: ResultColumn[];
 }
 
+/** Which date column a dashboard's range was applied to, if the question has one. */
+export interface TimeInfo {
+  column: string | null;
+  rangeApplied: boolean;
+  granularityApplied: boolean;
+}
+
+export interface TimeFilter {
+  from?: string;
+  to?: string;
+  granularity?: DateBucket;
+}
+
 export interface QuestionResult {
   columns: ResultColumn[];
   rows: unknown[][];
@@ -152,6 +165,7 @@ export interface QuestionResult {
   durationMs: number;
   sql: string;
   parameters: Record<string, unknown>;
+  time?: TimeInfo | null;
 }
 
 export type ChartType = 'table' | 'bar' | 'line' | 'pie';

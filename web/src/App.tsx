@@ -5,7 +5,7 @@ import { BuilderPage } from './BuilderPage';
 import { ConnectForm } from './ConnectForm';
 import { DashboardsPage } from './DashboardsPage';
 import { SavedPage } from './SavedPage';
-import type { Connection, SavedQuery, SchemaResponse, TableRef } from './types';
+import type { ChartType, Connection, Dashboard, SavedQuery, SchemaResponse, TableRef } from './types';
 
 type Page = 'browse' | 'build' | 'saved' | 'dashboards';
 
@@ -31,6 +31,11 @@ export function App() {
   const [startTable, setStartTable] = useState<TableRef | null>(null);
   const [builderKey, setBuilderKey] = useState(0);
   const [contentVersion, setContentVersion] = useState(0); // bumped when saved content changes
+
+  // building a card for a dashboard, or editing one from it
+  const [dashboardId, setDashboardId] = useState<string | null>(null);
+  const [dashboardCtx, setDashboardCtx] = useState<{ id: string; name: string; mode: 'add' | 'edit' } | null>(null);
+  const [presetType, setPresetType] = useState<ChartType | null>(null);
 
   const tables = schema?.snapshot.metadata.tables ?? [];
   const ready = schema !== null && schema.connection.id === activeId;
@@ -88,6 +93,8 @@ export function App() {
   // ---- navigation -----------------------------------------------------------------------------
 
   const newQuestion = (table: TableRef | null = null) => {
+    setDashboardCtx(null);
+    setPresetType(null);
     setEditing(null);
     setStartTable(table);
     setBuilderKey((k) => k + 1);
@@ -96,10 +103,40 @@ export function App() {
 
   const openSaved = (query: SavedQuery) => {
     if (query.connectionId !== activeId) setActiveId(query.connectionId);
+    setDashboardCtx(null);
+    setPresetType(null);
     setEditing(query);
     setStartTable(null);
     setBuilderKey((k) => k + 1);
     setPage('build');
+  };
+
+  /** "Add card" on a dashboard: build a new card of this kind, which lands on the dashboard when saved. */
+  const addCard = (type: ChartType, dashboard: Dashboard) => {
+    setDashboardId(dashboard.id);
+    setDashboardCtx({ id: dashboard.id, name: dashboard.name, mode: 'add' });
+    setPresetType(type);
+    setEditing(null);
+    setStartTable(null);
+    setBuilderKey((k) => k + 1);
+    setPage('build');
+  };
+
+  /** "Edit" on a card: open its question, and come back to the dashboard when done. */
+  const editCard = (query: SavedQuery, dashboard: Dashboard) => {
+    setDashboardId(dashboard.id);
+    setDashboardCtx({ id: dashboard.id, name: dashboard.name, mode: 'edit' });
+    setPresetType(null);
+    setEditing(query);
+    setStartTable(null);
+    setBuilderKey((k) => k + 1);
+    setPage('build');
+  };
+
+  const backToDashboard = () => {
+    setDashboardCtx(null);
+    setPresetType(null);
+    setPage('dashboards');
   };
 
   // ---- render ---------------------------------------------------------------------------------
@@ -195,6 +232,13 @@ export function App() {
               tables={tables}
               saved={editing}
               startTable={startTable}
+              dashboard={dashboardCtx}
+              presetType={presetType}
+              onDone={() => {
+                setContentVersion((v) => v + 1);
+                backToDashboard();
+              }}
+              onCancel={backToDashboard}
               onSaved={(q) => {
                 setEditing(q);
                 setContentVersion((v) => v + 1);
@@ -213,7 +257,15 @@ export function App() {
           />
         )}
 
-        {page === 'dashboards' && <DashboardsPage version={contentVersion} onOpen={openSaved} />}
+        {page === 'dashboards' && (
+          <DashboardsPage
+            version={contentVersion}
+            selectedId={dashboardId}
+            onSelect={setDashboardId}
+            onAddCard={addCard}
+            onEditCard={editCard}
+          />
+        )}
       </main>
     </div>
   );
