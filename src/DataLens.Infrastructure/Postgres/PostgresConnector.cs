@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using DataLens.Core;
 using DataLens.Core.Models;
+using DataLens.Core.Query;
 using Npgsql;
 
 namespace DataLens.Infrastructure.Postgres;
@@ -60,6 +62,98 @@ public sealed class PostgresConnector : IDatabaseConnector
         await tx.RollbackAsync(ct);
         return Assemble(columns, constraints, indexes);
     }
+
+    public async Task<QueryResult> ExecuteAsync(
+        string connectionString, CompiledQuery query, ExecOptions options, CancellationToken ct = default)
+    {
+        var builder = ConnectionStringParser.Parse(connectionString);
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            // Npgsql pools physical connections per connection string, so opening one per call is cheap.
+            await using var conn = new NpgsqlConnection(builder.ConnectionString);
+            await conn.OpenAsync(ct);
+
+            // The guarantee that DataLens never changes the user's data, even if the database user
+            // is allowed to: every query runs read-only and is rolled back, never committed.
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            await RunAsync(conn, tx, "SET TRANSACTION READ ONLY", ct);
+            await RunAsync(conn, tx, $"SET LOCAL statement_timeout = {(int)options.Timeout.TotalMilliseconds}", ct);
+
+            await using var cmd = new NpgsqlCommand(query.Sql, conn, tx);
+            cmd.CommandTimeout = (int)Math.Ceiling(options.Timeout.TotalSeconds) + 5;
+            foreach (var (name, value) in query.Parameters)
+                cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+
+            var columns = new List<string>();
+            var rows = new List<object?[]>();
+            var truncated = false;
+
+            try
+            {
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                for (var i = 0; i < reader.FieldCount; i++)
+                    columns.Add(reader.GetName(i));
+
+                while (await reader.ReadAsync(ct))
+                {
+                    if (rows.Count >= options.MaxRows)
+                    {
+                        // More rows exist than we are willing to read. Stop the server producing them.
+                        truncated = true;
+                        cmd.Cancel();
+                        break;
+                    }
+
+                    var row = new object?[reader.FieldCount];
+                    for (var i = 0; i < row.Length; i++)
+                        row[i] = ValueNormalizer.Normalize(reader.GetValue(i));
+                    rows.Add(row);
+                }
+            }
+            catch (PostgresException ex) when (truncated && ex.SqlState == "57014")
+            {
+                // The cancel we sent ourselves arriving. Expected, not an error.
+            }
+
+            await tx.RollbackAsync(ct);
+            stopwatch.Stop();
+            return new QueryResult(columns, rows, truncated, stopwatch.ElapsedMilliseconds);
+        }
+        catch (PostgresException ex)
+        {
+            throw new QueryFailedException(Classify(ex), Describe(ex, options), ex);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or TimeoutException)
+        {
+            throw new QueryFailedException(QueryFailure.Other, Explain(ex), ex);
+        }
+    }
+
+    private static async Task RunAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(sql, conn, tx);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static QueryFailure Classify(PostgresException ex) => ex.SqlState switch
+    {
+        "57014" => QueryFailure.Timeout,
+        "42501" => QueryFailure.PermissionDenied,
+        "42P01" or "42703" or "3F000" => QueryFailure.ObjectNotFound,
+        "25006" => QueryFailure.WriteBlocked,
+        _ => QueryFailure.Other
+    };
+
+    private static string Describe(PostgresException ex, ExecOptions options) => Classify(ex) switch
+    {
+        QueryFailure.Timeout => $"The query took longer than {options.Timeout.TotalSeconds:0.#} seconds and was stopped.",
+        QueryFailure.PermissionDenied => "This database user is not allowed to read that table.",
+        QueryFailure.ObjectNotFound => "A table or column no longer exists. Re-sync the connection and try again.",
+        QueryFailure.WriteBlocked => "That statement would change data, which DataLens does not allow.",
+        _ => ex.MessageText
+    };
 
     // ---- connection test helpers -------------------------------------------------------------
 

@@ -1,4 +1,5 @@
 using DataLens.Core.Models;
+using DataLens.Core.Query;
 
 namespace DataLens.Core;
 
@@ -12,6 +13,14 @@ public interface IDatabaseConnector
 
     /// <summary>Reads tables, columns, keys and indexes. Does not read any row data.</summary>
     Task<DbMetadata> DescribeAsync(string connectionString, CancellationToken ct = default);
+
+    /// <summary>
+    /// Runs one query. Always inside a read-only transaction that is rolled back, with a server-side
+    /// timeout and a hard row cap, whatever permissions the database user has.
+    /// </summary>
+    /// <exception cref="Query.QueryFailedException">Timeout, permission problem, missing object, and so on.</exception>
+    Task<QueryResult> ExecuteAsync(
+        string connectionString, CompiledQuery query, ExecOptions options, CancellationToken ct = default);
 }
 
 /// <summary>Our own database: saved connections and schema snapshots.</summary>

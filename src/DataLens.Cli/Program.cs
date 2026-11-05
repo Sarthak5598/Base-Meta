@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-using DataLens.Cli;
+﻿using DataLens.Cli;
 using DataLens.Core;
 using DataLens.Infrastructure.Postgres;
 using DataLens.Infrastructure.Security;
@@ -11,6 +10,8 @@ const string Usage = """
       datalens connect <name> <connection-string>   test, save, and sync a database
       datalens sync <name>                          re-read the structure of a saved database
       datalens show <name> [--json]                 print the stored snapshot
+      datalens rows <name> <schema.table> [--page n] [--size n] [--sort column] [--desc]
+                                                    print a page of rows
       datalens list                                 list saved connections
 
     Connection strings: "Host=localhost;Database=shop;Username=datalens_ro;Password=..."
@@ -29,17 +30,21 @@ var home = Environment.GetEnvironmentVariable("DATALENS_HOME") ?? Path.Combine(D
 var protector = ConnectionProtector.Create(Path.Combine(home, "key"));
 IAppStore store = new SqliteAppStore(Path.Combine(home, "app.db"), protector);
 IDatabaseConnector connector = new PostgresConnector();
+var connections = new ConnectionService(store, connector);
+var explorer = new DataExplorerService(store, connector);
 
 try
 {
     switch (args[0])
     {
         case "connect" when args.Length == 3:
-            return await Commands.ConnectAsync(store, connector, args[1], args[2]);
+            return await Commands.ConnectAsync(connections, args[1], args[2]);
         case "sync" when args.Length == 2:
-            return await Commands.SyncAsync(store, connector, args[1]);
+            return await Commands.SyncAsync(connections, args[1]);
         case "show" when args.Length is 2 or 3:
             return await Commands.ShowAsync(store, args[1], asJson: args.Length == 3 && args[2] == "--json");
+        case "rows" when args.Length >= 3:
+            return await Commands.RowsAsync(explorer, args);
         case "list" when args.Length == 1:
             return await Commands.ListAsync(store);
         default:
@@ -47,8 +52,13 @@ try
             return 1;
     }
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is DataLensException or DataLens.Core.Query.QueryFailedException or FormatException)
 {
     Console.Error.WriteLine($"Error: {ex.Message}");
+    return 1;
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"Unexpected error: {ex.Message}");
     return 1;
 }

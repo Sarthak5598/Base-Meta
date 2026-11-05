@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DataLens.Core;
 using DataLens.Core.Models;
+using DataLens.Core.Query;
 
 namespace DataLens.Cli;
 
@@ -13,49 +14,37 @@ internal static class Commands
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
-    public static async Task<int> ConnectAsync(
-        IAppStore store, IDatabaseConnector connector, string name, string connectionString)
+    public static async Task<int> ConnectAsync(ConnectionService service, string name, string connectionString)
     {
-        var test = await connector.TestAsync(connectionString);
-        if (!test.Ok)
+        var result = await service.ConnectAsync(name, connectionString);
+        if (!result.Test.Ok)
         {
-            Console.Error.WriteLine($"Connection failed: {test.Error}");
+            Console.Error.WriteLine($"Connection failed: {result.Test.Error}");
             return 1;
         }
 
         Console.WriteLine("Connected.");
-        foreach (var warning in test.Warnings)
+        foreach (var warning in result.Test.Warnings)
             Console.WriteLine($"  warning: {warning}");
-
-        var saved = await store.SaveConnectionAsync(name, connectionString, test.CanWrite);
-        Console.WriteLine($"Saved as '{saved.Name}' ({saved.Id}): {saved.MaskedConnectionString}");
-
-        return await SyncAsync(store, connector, saved.Name);
+        Console.WriteLine($"Saved as '{result.Connection!.Name}' ({result.Connection.Id}): {result.Connection.MaskedConnectionString}");
+        Console.WriteLine(Summary(result.Snapshot!));
+        return 0;
     }
 
-    public static async Task<int> SyncAsync(IAppStore store, IDatabaseConnector connector, string nameOrId)
+    public static async Task<int> SyncAsync(ConnectionService service, string nameOrId)
     {
-        var saved = await store.FindConnectionAsync(nameOrId);
-        if (saved is null)
-        {
-            Console.Error.WriteLine($"No saved connection called '{nameOrId}'.");
-            return 1;
-        }
-
-        var connectionString = await store.GetConnectionStringAsync(saved.Id)
-            ?? throw new InvalidOperationException("The saved connection string is missing.");
-
         Console.WriteLine("Reading structure...");
-        var metadata = await connector.DescribeAsync(connectionString);
-        var snapshot = await store.SaveSnapshotAsync(saved.Id, metadata);
-
-        var tables = metadata.Tables.Count(t => t.Kind == TableKind.Table);
-        var views = metadata.Tables.Count - tables;
-        var columns = metadata.Tables.Sum(t => t.Columns.Count);
-        var fks = metadata.Tables.Sum(t => t.ForeignKeys.Count);
-        Console.WriteLine(
-            $"Snapshot v{snapshot.Version}: {tables} tables, {views} views, {columns} columns, {fks} foreign keys.");
+        Console.WriteLine(Summary(await service.SyncAsync(nameOrId)));
         return 0;
+    }
+
+    private static string Summary(StoredSnapshot snapshot)
+    {
+        var tables = snapshot.Metadata.Tables.Count(t => t.Kind == TableKind.Table);
+        var views = snapshot.Metadata.Tables.Count - tables;
+        var columns = snapshot.Metadata.Tables.Sum(t => t.Columns.Count);
+        var fks = snapshot.Metadata.Tables.Sum(t => t.ForeignKeys.Count);
+        return $"Snapshot v{snapshot.Version}: {tables} tables, {views} views, {columns} columns, {fks} foreign keys.";
     }
 
     public static async Task<int> ShowAsync(IAppStore store, string nameOrId, bool asJson)
@@ -91,6 +80,30 @@ internal static class Commands
 
         foreach (var c in list)
             Console.WriteLine($"{c.Name,-20} {c.Id}  {(c.CanWrite ? "write access" : "read-only")}  {c.MaskedConnectionString}");
+        return 0;
+    }
+
+    /// <summary>rows &lt;name&gt; &lt;schema.table&gt; [--page n] [--size n] [--sort col] [--desc]</summary>
+    public static async Task<int> RowsAsync(DataExplorerService explorer, string[] args)
+    {
+        var target = args[2].Split('.', 2);
+        if (target.Length != 2)
+        {
+            Console.Error.WriteLine("Name the table as schema.table, for example public.orders");
+            return 1;
+        }
+
+        string? Option(string flag) => Array.IndexOf(args, flag) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+
+        var request = new PreviewRequest(
+            args[1], target[0], target[1],
+            Page: int.TryParse(Option("--page"), out var page) ? page : 1,
+            PageSize: int.TryParse(Option("--size"), out var size) ? size : 20,
+            SortColumn: Option("--sort"),
+            SortDirection: args.Contains("--desc") ? SortDirection.Desc : SortDirection.Asc);
+
+        var result = await explorer.PreviewAsync(request);
+        Console.WriteLine(RowPrinter.Render(result));
         return 0;
     }
 }

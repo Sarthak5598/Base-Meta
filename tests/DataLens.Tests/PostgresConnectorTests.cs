@@ -13,12 +13,21 @@ namespace DataLens.Tests;
 /// </summary>
 public class PostgresConnectorTests
 {
-    private static readonly string? ReadOnly = Environment.GetEnvironmentVariable("DATALENS_TEST_PG_RO");
-    private static readonly string? ReadWrite = Environment.GetEnvironmentVariable("DATALENS_TEST_PG_RW");
+    internal static readonly string? ReadOnly = Environment.GetEnvironmentVariable("DATALENS_TEST_PG_RO");
+    internal static readonly string? ReadWrite = Environment.GetEnvironmentVariable("DATALENS_TEST_PG_RW");
 
     public sealed class PgFactAttribute : FactAttribute
     {
         public PgFactAttribute()
+        {
+            if (ReadOnly is null || ReadWrite is null)
+                Skip = "Set DATALENS_TEST_PG_RO and DATALENS_TEST_PG_RW to run against Postgres.";
+        }
+    }
+
+    public sealed class PgTheoryAttribute : TheoryAttribute
+    {
+        public PgTheoryAttribute()
         {
             if (ReadOnly is null || ReadWrite is null)
                 Skip = "Set DATALENS_TEST_PG_RO and DATALENS_TEST_PG_RW to run against Postgres.";
