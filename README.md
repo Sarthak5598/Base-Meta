@@ -1,8 +1,8 @@
 # DataLens
 
 A lightweight database explorer and analytics tool, inspired by Metabase. Connect a PostgreSQL
-database with a read-only connection string, learn its structure, and (next) build queries and charts
-from it. See [`docs/design.md`](docs/design.md) for the design.
+database with a read-only connection string, learn its structure, build queries without writing SQL, chart
+the results, and keep them on dashboards. See [`docs/design.md`](docs/design.md) for the design.
 
 ## Status
 
@@ -14,7 +14,10 @@ from it. See [`docs/design.md`](docs/design.md) for the design.
 | Data explorer: browse any table with paging and sorting, follow relationships | done |
 | Safe executor: read-only transaction, timeout, row cap | done |
 | Web UI (React) and API | done |
-| Query builder, SQL compiler for filters and aggregations, charts | next |
+| Query builder: filters, group by, summaries, joins along foreign keys, sorting; live SQL | done |
+| Charts: bar, line, pie, and a table view of every result | done |
+| Saved questions and dashboards (questions re-run live, results are never stored) | done |
+| Login, more database engines, deployment image | not started |
 
 ## Try it
 
@@ -30,8 +33,15 @@ docker compose up -d                  # sample "shop" database on localhost:5433
 ./scripts/run.sh
 ```
 
-Open <http://localhost:5080>, paste `postgresql://datalens_ro:readonly@localhost:5433/shop`, and browse. Click a
-column header to sort, click a `→ users` chip to follow a relationship. The API listens on this machine only.
+Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localhost:5433/shop`. Then:
+
+- **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a relationship.
+- **New question**: pick a table, add filters, summaries and groupings, optionally add related tables (joined along
+  foreign keys, no `ON` clause to write). **Show SQL** displays exactly what will run. Press **Run**, then view the
+  result as a table, bar, line or pie chart, and save it.
+- **Saved questions** and **Dashboards**: put questions side by side. Every card runs its question live.
+
+The API listens on this machine only.
 
 **From the terminal.**
 
@@ -90,12 +100,13 @@ src/
   DataLens.Api/             ASP.NET Core API; also serves the built UI from wwwroot
 web/                        React + TypeScript UI (Vite). `npm run build` writes into DataLens.Api/wwwroot
 scripts/run.sh              build the UI and start the API
+scripts/e2e.cjs             optional browser walkthrough of the whole UI (needs Playwright)
 tests/
   DataLens.Tests/           xUnit; unit tests plus Postgres integration tests
 ```
 
 Dependency direction: `Cli` and `Api` depend on `Infrastructure`, which depends on `Core`.
-`Core` depends on nothing, so the query model and compiler (next) stay pure and easy to test.
+`Core` depends on nothing, so the query model and compiler stay pure and easy to test.
 
 ## Deployment plan
 

@@ -112,6 +112,24 @@ public sealed class PostgresQuestionTests : IDisposable
     }
 
     [PostgresConnectorTests.PgFact]
+    public async Task A_grouped_question_with_no_sort_comes_back_in_group_order()
+    {
+        // the default order is what makes a "per month" line chart run left to right
+        var result = await RunAsync(new QueryDefinition(T("orders"),
+            GroupBy: new[] { new Grouping(C("created_at"), DateBucket.Month) },
+            Aggregations: new[] { new Aggregation(AggFn.Count) }));
+
+        var months = result.Rows.Select(r => DateTimeOffset.Parse((string)r[0]!)).ToList();
+        Assert.True(months.Count > 6);
+        Assert.Equal(months.OrderBy(m => m), months);
+
+        var byStatus = await RunAsync(new QueryDefinition(T("orders"),
+            GroupBy: new[] { new Grouping(C("status")) }, Aggregations: new[] { new Aggregation(AggFn.Count) }));
+        var names = byStatus.Rows.Select(r => (string)r[0]!).ToList();
+        Assert.Equal(names.OrderBy(n => n, StringComparer.Ordinal), names);
+    }
+
+    [PostgresConnectorTests.PgFact]
     public async Task Sorting_by_a_summary_and_limiting_gives_the_top_n()
     {
         var result = await RunAsync(new QueryDefinition(T("orders"),

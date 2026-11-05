@@ -24,6 +24,12 @@ Every chart is a live query against the source DB at request time.
 | 7 | Browsing uses OFFSET paging, fetching one row more than the page to know if there is a next page | No `count(*)`. Browsing stops at row 100,000: sort to reach rows beyond that |
 | 8 | Paging orders by the user's sort, then the primary key | Without a total order, OFFSET pages can repeat or skip rows |
 | 9 | Row API takes `schema` and `table` as query parameters | Names can contain `/` and `.` |
+| 11 | The query model joins tables along declared foreign keys (LEFT JOIN, the key may be on either table, each table at most once) | Users never write ON. A join names a table, the table it comes from, and the key |
+| 12 | Grouped questions with no chosen sort are ordered by their grouping columns | Postgres returns groups in arbitrary order, which scrambles any time series |
+| 13 | A date typed against a timestamp column means the whole day | "on or before 31 March" includes the evening of the 31st |
+| 14 | `query/compile` validates a question and returns its SQL without touching the source DB | The builder shows live SQL as you type. Saving also validates, so a saved question is never broken from the start |
+| 15 | Saved questions store the query model and chart choice, never results. Dashboards re-run every card | Always current. As slow as the source database |
+| 16 | Charts: bar, line, pie, plus a table view of every result. Palette validated for colour-blind separation. Time axes stay as columns. Pies fold past six slices into "Other" and always have a legend | Bars compare better than pies, but pie was asked for |
 | 10 | Only the string the user typed is stored. Our defaults (5s connect timeout) are applied at connect time | Defaults can change without touching saved connections |
 
 ## Flows
@@ -79,6 +85,8 @@ Layer 2 is why warn-only (decision 3) is acceptable: a connection string with wr
 
 ## Open questions
 
-- Exact shape of `QueryDefinition` (filters, aggregations, group by, joins via FKs).
-- Where the encryption key lives (env var for v1?).
-- Frontend flow and screens.
+- Login and per-user content. Everything is one shared workspace on localhost for now.
+- Filters are always AND. OR groups would need a nested filter model.
+- Summaries across a one-to-many join count the "many" side's rows, as SQL does. Worth a warning in the UI.
+- Deployment: one container with a mounted volume for SQLite, and a key from the environment.
+- A second database engine (the connector interface exists; nothing else does).

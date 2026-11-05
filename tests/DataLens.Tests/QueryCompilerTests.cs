@@ -203,6 +203,39 @@ public class QueryCompilerTests
         Assert.Contains("GROUP BY 1, 2", sql);
     }
 
+    [Fact]
+    public void Grouped_results_are_ordered_by_the_groups_unless_a_sort_is_chosen()
+    {
+        // without this, "orders per month" comes back in whatever order Postgres likes
+        var byMonth = Sql(Q("orders", q => q with
+        {
+            GroupBy = new[] { new Grouping(Shop.Col("created_at"), DateBucket.Month) },
+            Aggregations = new[] { new Aggregation(AggFn.Count) }
+        }));
+        Assert.Contains("GROUP BY 1\nORDER BY 1 ASC NULLS LAST\nLIMIT", byMonth);
+
+        var two = Sql(Q("orders", q => q with
+        {
+            GroupBy = new[] { new Grouping(Shop.Col("status")), new Grouping(Shop.Col("paid")) },
+            Aggregations = new[] { new Aggregation(AggFn.Count) }
+        }));
+        Assert.Contains("GROUP BY 1, 2\nORDER BY 1 ASC NULLS LAST, 2 ASC NULLS LAST", two);
+
+        // an explicit sort replaces the default; it is not added to it
+        var chosen = Sql(Q("orders", q => q with
+        {
+            GroupBy = new[] { new Grouping(Shop.Col("status")) },
+            Aggregations = new[] { new Aggregation(AggFn.Count) },
+            OrderBy = new[] { new SortSpec("count", SortDirection.Desc) }
+        }));
+        Assert.Contains("ORDER BY \"count\" DESC NULLS LAST\nLIMIT", chosen);
+        Assert.DoesNotContain("ORDER BY 1", chosen);
+
+        // plain row listings and single-row summaries have nothing to order by
+        Assert.DoesNotContain("ORDER BY", Sql(Q("orders")));
+        Assert.DoesNotContain("ORDER BY", Sql(Q("orders", q => q with { Aggregations = new[] { new Aggregation(AggFn.Count) } })));
+    }
+
     // ---- filters ---------------------------------------------------------------------------
 
     private static CompiledSelect Filtered(string table, string column, FilterOp op, params object?[] values) =>
@@ -361,6 +394,7 @@ public class QueryCompilerTests
             "FROM \"public\".\"orders\" AS \"t0\"\n" +
             "LEFT JOIN \"public\".\"users\" AS \"t1\" ON \"t0\".\"user_id\" = \"t1\".\"id\"\n" +
             "GROUP BY 1\n" +
+            "ORDER BY 1 ASC NULLS LAST\n" +
             "LIMIT @p_limit", c.Query.Sql);
         Assert.Equal("users.country", c.Columns[0].Name);
     }

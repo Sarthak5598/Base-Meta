@@ -111,6 +111,11 @@ public static class QueryCompiler
                 order.Add($"{Q(sort.Column)} {(sort.Direction == SortDirection.Desc ? "DESC" : "ASC")} NULLS LAST");
             }
 
+            // Groups come back from Postgres in no particular order, which would scramble any time series.
+            // Unless the user chose a sort, order by the grouping columns (by position in the select list).
+            if (order.Count == 0 && groupOrdinals.Count > 0)
+                order.AddRange(groupOrdinals.Select(n => $"{n} ASC NULLS LAST"));
+
             _params["p_limit"] = q.Limit;
 
             var source = _tables[0].Meta;
