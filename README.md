@@ -35,15 +35,16 @@ docker compose up -d                  # sample "shop" database on localhost:5433
 
 Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localhost:5433/shop`. Then:
 
-- **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a relationship.
-- **New question**: pick a table, add filters, summaries and groupings, optionally add related tables (joined along
-  foreign keys, no `ON` clause to write). **Show SQL** displays exactly what will run. Press **Run**, then view the
-  result as a table, bar, line or pie chart, and save it.
-- **Dashboards**: **+ Add card**, choose Line chart, Bar chart, Pie chart or Table, pick a table, and it is
-  pre-filled and already run. Press **Add to dashboard**. The date range (last 7 days ... this year, all time, or
-  a custom range) and the period (day, week, month, quarter, year) at the top apply to every card, and are
-  remembered per dashboard. Saved questions can also be added from the same dialog.
-- **Saved questions**: everything you have made. Open one to edit it.
+- **Dashboards** (the home screen): **+ Add card**, choose Line chart, Bar chart, Pie chart or Table, and a pop-up
+  opens with the question builder. Pick a table and it is pre-filled and already run. Press **Add to dashboard**.
+  Pick related tables (joined along foreign keys, no `ON` clause to write), add filters, summaries and groupings,
+  and **Show SQL** displays exactly what will run. The date range (last 7 days ... this year, all time, or a custom
+  range) and the period (day, week, month, quarter, year) at the top apply to every card, and are remembered per
+  dashboard. **Edit** on a card reopens its question in the pop-up.
+- **Saved questions** live in the Add card pop-up: reuse one on another dashboard, or delete it.
+- **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a
+  relationship, or **Ask a question about this** to open the builder (it can add the result to a dashboard as it
+  saves).
 
 The API listens on this machine only.
 

@@ -594,34 +594,6 @@ button.add {
   margin: 8px 0;
 }
 
-.cards-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-}
-.list-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-.list-main {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-.list-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
 
 /* ---- builder ---------------------------------------------------------------------------- */
 
@@ -1091,11 +1063,6 @@ figure.chart {
 .link-button.small {
   font-size: 12px;
 }
-.crumb {
-  justify-self: start;
-  text-decoration: none;
-  color: var(--accent);
-}
 
 /* the menu behind the three dots */
 .menu {
@@ -1306,4 +1273,92 @@ figure.chart {
 }
 .popover-foot .inline-field input {
   flex: 0 0 170px;
+}
+
+/* ======================================================================================
+   The question builder as a pop-up, and saved questions inside the Add card dialog
+   ====================================================================================== */
+
+.builder-backdrop {
+  padding: 16px;
+}
+.dialog-xl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 98vw);
+  height: min(920px, 94vh);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.dialog-close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 6;
+  font-size: 22px;
+}
+.dialog-xl .builder {
+  padding: 20px 24px 24px;
+}
+.dialog-xl .builder h1 {
+  padding-right: 32px;
+}
+.dialog-xl .builder-actions {
+  top: -20px; /* sticks to the top of the scrolling pop-up, past its padding */
+  padding-top: 20px;
+}
+
+.saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 230px;
+  overflow-y: auto;
+}
+.saved-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.saved-main {
+  min-width: 0;
+}
+.saved-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-row .row {
+  flex-wrap: nowrap;
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .builder-backdrop {
+    padding: 0;
+  }
+  .dialog-xl {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    border: 0;
+  }
+  .dialog-xl .builder {
+    padding: 16px 12px 24px;
+  }
 }

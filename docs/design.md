@@ -33,6 +33,7 @@ Every chart is a live query against the source DB at request time.
 | 17 | A dashboard's date range and granularity are applied when a card runs, never saved into the question | Same as Mixpanel boards: opening a question alone still shows what it was saved with. `TimeScope` does it, as a pure function with tests |
 | 18 | The date column a range applies to is the one the question already buckets by time, else the source table's most date-like column (`created_at`, `happened_at`...). Tables with none say "no date field" | No per-card setting to configure. A card is honest about what it filtered |
 | 19 | Adding a card starts on the dashboard: choose a kind, pick a table, get a pre-filled question that is already run, name suggested | Saving a question elsewhere and then hunting for it on a dashboard was backwards |
+| 20 | The question builder is a pop-up over the current page. There are no "New question" or "Saved questions" pages: saved questions are reused and deleted from the Add card dialog. Escape and clicking outside do not close the builder | Nothing is navigated away from, and a half-built question is not thrown away by accident |
 | 10 | Only the string the user typed is stored. Our defaults (5s connect timeout) are applied at connect time | Defaults can change without touching saved connections |
 
 ## Flows

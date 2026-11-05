@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { describeQuery } from './query';
 import type { ChartType, SavedQuery } from './types';
 
 interface TypeInfo {
@@ -77,26 +78,40 @@ export function TypeTiles({ onPick }: { onPick: (type: ChartType) => void }) {
 
 interface Props {
   dashboardName: string;
-  /** Saved questions that are not on this dashboard yet. */
-  existing: SavedQuery[];
+  /** Every saved question, so they can be reused here or deleted. */
+  queries: SavedQuery[];
+  /** The questions already on this dashboard. */
+  onDashboard: string[];
   onPickType: (type: ChartType) => void;
   onPickExisting: (queryId: string) => void;
+  onDelete: (queryId: string) => Promise<void>;
   onClose: () => void;
 }
 
-/** "What do you want to add?" Choose a kind of card, or reuse a question you saved before. */
-export function AddCardDialog({ dashboardName, existing, onPickType, onPickExisting, onClose }: Props) {
-  const [pick, setPick] = useState('');
+/**
+ * "What do you want to add?" Choose a kind of card, or reuse a question saved before.
+ * This is also where saved questions live: there is no separate page for them.
+ */
+export function AddCardDialog({ dashboardName, queries, onDashboard, onPickType, onPickExisting, onDelete, onClose }: Props) {
+  const [confirming, setConfirming] = useState<string | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
 
+  // Focus the first choice once, when the dialog opens. (Not on every render: the page behind re-renders
+  // as cards load, and that must not drag keyboard focus back to the top.)
   useEffect(() => {
     dialog.current?.querySelector<HTMLElement>('button')?.focus();
+  }, []);
+
+  // Escape closes. The handler reads the latest onClose without re-subscribing on every render.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeRef.current();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -113,22 +128,49 @@ export function AddCardDialog({ dashboardName, existing, onPickType, onPickExist
 
         <TypeTiles onPick={onPickType} />
 
-        {existing.length > 0 && (
+        {queries.length > 0 && (
           <div className="dialog-foot">
             <div className="foot-title">Or use a question you already saved</div>
-            <div className="row">
-              <select aria-label="A saved question" value={pick} onChange={(e) => setPick(e.target.value)}>
-                <option value="">Choose a saved question…</option>
-                {existing.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" disabled={!pick} onClick={() => onPickExisting(pick)}>
-                Add it
-              </button>
-            </div>
+            <ul className="saved-list">
+              {queries.map((q) => {
+                const there = onDashboard.includes(q.id);
+                return (
+                  <li key={q.id} className="saved-row">
+                    <div className="saved-main">
+                      <div className="saved-name">{q.name}</div>
+                      <div className="muted small saved-desc">{describeQuery(q.query)}</div>
+                    </div>
+                    {confirming === q.id ? (
+                      <div className="row">
+                        <span className="small">Delete it{there ? ' and its card' : ''}?</span>
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={async () => {
+                            await onDelete(q.id);
+                            setConfirming(null);
+                          }}
+                        >
+                          Yes
+                        </button>
+                        <button type="button" onClick={() => setConfirming(null)}>
+                          Keep
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="row">
+                        <button type="button" disabled={there} onClick={() => onPickExisting(q.id)}>
+                          {there ? 'On dashboard' : 'Add'}
+                        </button>
+                        <button type="button" aria-label={`Delete ${q.name}`} onClick={() => setConfirming(q.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>

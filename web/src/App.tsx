@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import { BrowsePage } from './BrowsePage';
+import { BuilderDialog } from './BuilderDialog';
 import { BuilderPage } from './BuilderPage';
 import { ConnectForm } from './ConnectForm';
 import { DashboardsPage } from './DashboardsPage';
-import { SavedPage } from './SavedPage';
 import type { ChartType, Connection, Dashboard, SavedQuery, SchemaResponse, TableRef } from './types';
 
-type Page = 'browse' | 'build' | 'saved' | 'dashboards';
+type Page = 'dashboards' | 'browse';
 
 const NAV: { page: Page; label: string }[] = [
-  { page: 'browse', label: 'Browse data' },
-  { page: 'build', label: 'New question' },
-  { page: 'saved', label: 'Saved questions' },
   { page: 'dashboards', label: 'Dashboards' },
+  { page: 'browse', label: 'Browse data' },
 ];
+
+/** What the question builder pop-up is open for. */
+interface BuilderRequest {
+  key: number;
+  /** add: a new card for a dashboard. edit: a card's question. standalone: a question from Browse. */
+  mode: 'add' | 'edit' | 'standalone';
+  dashboard: { id: string; name: string } | null;
+  presetType: ChartType | null;
+  saved: SavedQuery | null;
+  startTable: TableRef | null;
+  connectionId: string;
+}
 
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
@@ -24,18 +34,13 @@ export function App() {
   const [schema, setSchema] = useState<SchemaResponse | null>(null);
   const [adding, setAdding] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [page, setPage] = useState<Page>('browse');
-  const [editing, setEditing] = useState<SavedQuery | null>(null);
-  const [startTable, setStartTable] = useState<TableRef | null>(null);
-  const [builderKey, setBuilderKey] = useState(0);
-  const [contentVersion, setContentVersion] = useState(0); // bumped when saved content changes
-
-  // building a card for a dashboard, or editing one from it
+  const [page, setPage] = useState<Page>('dashboards');
   const [dashboardId, setDashboardId] = useState<string | null>(null);
-  const [dashboardCtx, setDashboardCtx] = useState<{ id: string; name: string; mode: 'add' | 'edit' } | null>(null);
-  const [presetType, setPresetType] = useState<ChartType | null>(null);
+  const [builder, setBuilder] = useState<BuilderRequest | null>(null);
+  const [contentVersion, setContentVersion] = useState(0); // bumped when saved content changes
 
   const tables = schema?.snapshot.metadata.tables ?? [];
   const ready = schema !== null && schema.connection.id === activeId;
@@ -80,6 +85,7 @@ export function App() {
     await loadConnections();
     setWarnings(result.warnings);
     setAdding(false);
+    setPage('dashboards');
     if (result.connection.id === activeId) await loadSchema(result.connection.id);
     else setActiveId(result.connection.id);
   };
@@ -90,54 +96,46 @@ export function App() {
     await loadSchema(activeId);
   };
 
-  // ---- navigation -----------------------------------------------------------------------------
+  // ---- the builder pop-up ---------------------------------------------------------------------
 
-  const newQuestion = (table: TableRef | null = null) => {
-    setDashboardCtx(null);
-    setPresetType(null);
-    setEditing(null);
-    setStartTable(table);
-    setBuilderKey((k) => k + 1);
-    setPage('build');
+  const open = (request: Omit<BuilderRequest, 'key'>) => {
+    setNotice(null);
+    // a card belongs to the database its question was built on
+    if (request.connectionId !== activeId) setActiveId(request.connectionId);
+    setBuilder({ ...request, key: Date.now() });
   };
 
-  const openSaved = (query: SavedQuery) => {
-    if (query.connectionId !== activeId) setActiveId(query.connectionId);
-    setDashboardCtx(null);
-    setPresetType(null);
-    setEditing(query);
-    setStartTable(null);
-    setBuilderKey((k) => k + 1);
-    setPage('build');
-  };
-
-  /** "Add card" on a dashboard: build a new card of this kind, which lands on the dashboard when saved. */
+  /** "+ Add card": a new card of this kind, which lands on the dashboard when saved. */
   const addCard = (type: ChartType, dashboard: Dashboard) => {
     setDashboardId(dashboard.id);
-    setDashboardCtx({ id: dashboard.id, name: dashboard.name, mode: 'add' });
-    setPresetType(type);
-    setEditing(null);
-    setStartTable(null);
-    setBuilderKey((k) => k + 1);
-    setPage('build');
+    open({
+      mode: 'add',
+      dashboard: { id: dashboard.id, name: dashboard.name },
+      presetType: type,
+      saved: null,
+      startTable: null,
+      connectionId: activeId!,
+    });
   };
 
-  /** "Edit" on a card: open its question, and come back to the dashboard when done. */
+  /** "Edit" on a card: its question, in the pop-up, with the dashboard still behind it. */
   const editCard = (query: SavedQuery, dashboard: Dashboard) => {
     setDashboardId(dashboard.id);
-    setDashboardCtx({ id: dashboard.id, name: dashboard.name, mode: 'edit' });
-    setPresetType(null);
-    setEditing(query);
-    setStartTable(null);
-    setBuilderKey((k) => k + 1);
-    setPage('build');
+    open({
+      mode: 'edit',
+      dashboard: { id: dashboard.id, name: dashboard.name },
+      presetType: null,
+      saved: query,
+      startTable: null,
+      connectionId: query.connectionId,
+    });
   };
 
-  const backToDashboard = () => {
-    setDashboardCtx(null);
-    setPresetType(null);
-    setPage('dashboards');
-  };
+  /** "Ask a question about this" on the Browse page. */
+  const askAbout = (table: TableRef) =>
+    open({ mode: 'standalone', dashboard: null, presetType: null, saved: null, startTable: table, connectionId: activeId! });
+
+  const closeBuilder = () => setBuilder(null);
 
   // ---- render ---------------------------------------------------------------------------------
 
@@ -193,7 +191,7 @@ export function App() {
               type="button"
               className={`nav-item${page === n.page ? ' selected' : ''}`}
               aria-current={page === n.page ? 'page' : undefined}
-              onClick={() => (n.page === 'build' ? newQuestion() : setPage(n.page))}
+              onClick={() => setPage(n.page)}
             >
               {n.label}
             </button>
@@ -211,50 +209,19 @@ export function App() {
           </div>
         )}
 
+        {notice && (
+          <div className="banner ok" role="status">
+            {notice}
+            <button type="button" className="link-button" onClick={() => setNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="banner error" role="alert">
             {error}
           </div>
-        )}
-
-        {page === 'browse' &&
-          (ready ? (
-            <BrowsePage key={activeId} connectionId={activeId!} tables={tables} onResync={resync} onAsk={newQuestion} />
-          ) : (
-            !error && <div className="center muted">Loading structure…</div>
-          ))}
-
-        {page === 'build' &&
-          (ready ? (
-            <BuilderPage
-              key={`${activeId}-${builderKey}`}
-              connectionId={activeId!}
-              tables={tables}
-              saved={editing}
-              startTable={startTable}
-              dashboard={dashboardCtx}
-              presetType={presetType}
-              onDone={() => {
-                setContentVersion((v) => v + 1);
-                backToDashboard();
-              }}
-              onCancel={backToDashboard}
-              onSaved={(q) => {
-                setEditing(q);
-                setContentVersion((v) => v + 1);
-              }}
-            />
-          ) : (
-            !error && <div className="center muted">Loading structure…</div>
-          ))}
-
-        {page === 'saved' && (
-          <SavedPage
-            connections={connections}
-            version={contentVersion}
-            onOpen={openSaved}
-            onChanged={() => setContentVersion((v) => v + 1)}
-          />
         )}
 
         {page === 'dashboards' && (
@@ -266,7 +233,39 @@ export function App() {
             onEditCard={editCard}
           />
         )}
+
+        {page === 'browse' &&
+          (ready ? (
+            <BrowsePage key={activeId} connectionId={activeId!} tables={tables} onResync={resync} onAsk={askAbout} />
+          ) : (
+            !error && <div className="center muted">Loading structure…</div>
+          ))}
       </main>
+
+      {builder && (
+        <BuilderDialog onClose={closeBuilder}>
+          {ready && schema!.connection.id === builder.connectionId ? (
+            <BuilderPage
+              key={builder.key}
+              connectionId={builder.connectionId}
+              tables={tables}
+              saved={builder.saved}
+              startTable={builder.startTable}
+              dashboard={builder.dashboard ? { ...builder.dashboard, mode: builder.mode === 'edit' ? 'edit' : 'add' } : null}
+              presetType={builder.presetType}
+              onSaved={() => setContentVersion((v) => v + 1)}
+              onDone={(note) => {
+                setContentVersion((v) => v + 1);
+                if (note) setNotice(note);
+                closeBuilder();
+              }}
+              onCancel={closeBuilder}
+            />
+          ) : (
+            <div className="center muted">Loading structure…</div>
+          )}
+        </BuilderDialog>
+      )}
     </div>
   );
 }

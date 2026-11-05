@@ -91,7 +91,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, cardIds, timeKey, refreshTick]);
+  }, [selectedId, cardIds, timeKey, refreshTick, version]);   // version: a card was edited, so run it again
 
   // ---- actions --------------------------------------------------------------------------------
 
@@ -149,6 +149,16 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
   };
 
   const addable = useMemo(() => queries.filter((q) => !open?.cards.some((c) => c.queryId === q.id)), [queries, open]);
+
+  /** Deleting a saved question also takes its card off every dashboard. */
+  const deleteQuery = async (queryId: string) => {
+    try {
+      await api.deleteQuery(queryId);
+      await loadAll();
+    } catch (e) {
+      setError(message(e));
+    }
+  };
 
   // ---- render ---------------------------------------------------------------------------------
 
@@ -283,7 +293,8 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
         <div className="card-grid">
           {open.cards.map((card) => {
             const state = cards[card.queryId];
-            const q = state?.query ?? queries.find((x) => x.id === card.queryId) ?? null;
+            // the freshly loaded list wins, so a rename or a new chart type shows at once
+            const q = queries.find((x) => x.id === card.queryId) ?? state?.query ?? null;
             const time = state?.result?.time;
             return (
               <article key={card.queryId} className={`dash-card${state?.loading ? ' loading' : ''}`} aria-busy={state?.loading}>
@@ -331,13 +342,15 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
       {adding && open && (
         <AddCardDialog
           dashboardName={open.name}
-          existing={addable}
+          queries={queries}
+          onDashboard={open.cards.map((c) => c.queryId)}
           onClose={() => setAdding(false)}
           onPickType={(type) => {
             setAdding(false);
             onAddCard(type, open);
           }}
           onPickExisting={addExisting}
+          onDelete={deleteQuery}
         />
       )}
     </div>

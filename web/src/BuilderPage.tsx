@@ -30,6 +30,7 @@ import {
 import { ResultView } from './ResultView';
 import type {
   ChartConfig,
+  Dashboard,
   ChartType,
   CompiledPreview,
   QueryDefinition,
@@ -52,9 +53,9 @@ interface Props {
   dashboard?: { id: string; name: string; mode: 'add' | 'edit' } | null;
   /** The kind of card chosen on the dashboard. Pre-fills the question and the chart. */
   presetType?: ChartType | null;
-  /** Called after a dashboard card is added or changed. */
-  onDone?: () => void;
-  /** Back to the dashboard without saving. */
+  /** Called after saving, with a note to show when there is no dashboard card to see. */
+  onDone?: (note?: string) => void;
+  /** Close without saving. */
   onCancel?: () => void;
 }
 
@@ -88,6 +89,17 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, 
   const [name, setName] = useState(saved?.name ?? '');
   const nameTouched = useRef(saved !== null);
   const [addedToDashboard, setAddedToDashboard] = useState(false);
+  // a question built outside a dashboard can be put on one as it is saved
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const [alsoAddTo, setAlsoAddTo] = useState('');
+  useEffect(() => {
+    if (dashboard) return;
+    let live = true;
+    api.dashboards().then((d) => live && setDashboards(d)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [dashboard]);
   const [savedId, setSavedId] = useState<string | null>(saved?.id ?? null);
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
@@ -205,11 +217,17 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, 
         setAddedToDashboard(true);
       }
 
-      setSaveNote(
-        dashboard ? 'Saved.' : savedId ? 'Changes saved.' : 'Saved. Find it under Saved questions, or add it to a dashboard there.',
-      );
+      if (!dashboard && alsoAddTo) await api.addCard(alsoAddTo, done.id);
+
       onSaved(done);
-      if (dashboard) onDone?.();
+      const where = dashboards.find((d) => d.id === alsoAddTo)?.name;
+      onDone?.(
+        dashboard
+          ? undefined
+          : where
+            ? `Saved “${done.name}” and added it to ${where}.`
+            : `Saved “${done.name}”. Add it to a dashboard with + Add card.`,
+      );
     } catch (e) {
       setSaveNote(message(e));
     } finally {
@@ -274,11 +292,6 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, 
   return (
     <div className="builder">
       <form className="builder-form" onSubmit={(e) => e.preventDefault()}>
-        {dashboard && (
-          <button type="button" className="link-button small crumb" onClick={onCancel}>
-            ← Back to {dashboard.name}
-          </button>
-        )}
         <h1>
           {dashboard
             ? dashboard.mode === 'add'
@@ -642,8 +655,24 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, 
                 maxLength={100}
               />
             </label>
+            {!dashboard && dashboards.length > 0 && (
+              <label className="field">
+                <span className="field-label">Also add to</span>
+                <select aria-label="Also add to a dashboard" value={alsoAddTo} onChange={(e) => setAlsoAddTo(e.target.value)}>
+                  <option value="">No dashboard</option>
+                  {dashboards.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button type="button" onClick={onCancel}>
+              Cancel
+            </button>
             <button type="button" className="primary" onClick={save} disabled={saving || !name.trim() || !preview}>
-              {saving ? 'Saving…' : dashboard?.mode === 'add' ? 'Add to dashboard' : savedId ? 'Save changes' : 'Save question'}
+              {saving ? 'Saving…' : dashboard?.mode === 'add' ? 'Add to dashboard' : savedId || dashboard ? 'Save changes' : 'Save question'}
             </button>
             {saveNote && (
               <p className="muted small save-note" role="status">
