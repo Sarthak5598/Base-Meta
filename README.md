@@ -15,7 +15,7 @@ from it. See [`docs/design.md`](docs/design.md) for the design.
 
 ## Try it
 
-You need the .NET 8 SDK and Docker.
+You need the .NET 10 SDK and Docker.
 
 ```bash
 docker compose up -d                  # sample "shop" database on localhost:5433
@@ -54,8 +54,7 @@ dotnet test
 ### Windows notes
 
 - In PowerShell set variables with `$env:DATALENS_TEST_PG_RO = "..."`, not `export`.
-- The projects target .NET 8 but run on any newer installed runtime (`RollForward` in `Directory.Build.props`).
-- WSL works well: install the .NET SDK inside WSL, enable Docker Desktop's WSL integration, and clone the
+- WSL works well: install the .NET 10 SDK inside WSL, enable Docker Desktop's WSL integration, and clone the
   repo inside the WSL filesystem (`~/`), not under `/mnt/d`, for speed. Delete any `bin/` and `obj/`
   folders that a Windows build left behind.
 

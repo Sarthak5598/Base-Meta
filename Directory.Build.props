@@ -1,7 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <!-- Target .NET 8 (LTS), but let runnable projects (CLI, tests) start on a newer installed runtime
-         if .NET 8 itself is not installed. -->
-    <RollForward>LatestMajor</RollForward>
-  </PropertyGroup>
-</Project>
