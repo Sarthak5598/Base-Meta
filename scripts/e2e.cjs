@@ -87,10 +87,56 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
   await page.click(`${B} button:has-text("+ Add a filter")`);
   await page.locator(`${B} select[aria-label="Filter column"]`).first().selectOption({ label: 'status' });
   await page.locator(`${B} select[aria-label="Filter condition"]`).first().selectOption('eq');
-  await page.locator(`${B} input[aria-label="Value"]`).first().fill('paid');
-  await page.waitForFunction(() => document.querySelector('.dialog-xl pre.sql').textContent.includes('WHERE'));
+  // the value box suggests what really exists in the column
+  const value = page.locator(`${B} input[aria-label="Value"]`).first();
+  const options = async () => (await page.locator(`${B} [role="option"]`).allInnerTexts()).map(t => t.replace(/^✓\s*/, '').trim());
+  // waits until the list shows exactly these, rather than reading it while a debounced search is still on its way
+  const optionsAre = (expected) => page.waitForFunction((exp) => {
+    const shown = [...document.querySelectorAll('.dialog-xl [role="option"]')].map(e => e.textContent.replace(/^[\s✓]+/, '').trim());
+    return JSON.stringify(shown) === JSON.stringify(exp);
+  }, expected, { timeout: 5000 }).then(() => true, () => false);
+  await value.focus();
+  check('focusing the value box lists the values that exist in the column', await optionsAre(['paid', 'pending', 'refunded', 'shipped']));
+  await shot('suggestions-open');
+  await value.fill('ing');
+  check('typing narrows the list, matching inside a value', await optionsAre(['pending']));
+  await value.fill('shiped');
+  await page.waitForSelector(`${B} .combo-heading`);
+  check('a misspelling offers the right value under "Did you mean"',
+    (await optionsAre(['shipped'])) && /did you mean/i.test(await page.locator(`${B} .combo-heading`).innerText()));
+  await shot('suggestions-typo');
+  await value.fill('zzzzzz');
+  await page.waitForSelector(`${B} .combo-note:has-text("Nothing like that")`);
+  check('with nothing close, it says so and still lets you use what you typed', (await options()).length === 0);
+  await value.fill('pa');
+  check('a shorter search finds the start of a value', await optionsAre(['paid']));
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  check('arrow keys and Enter pick a suggestion and close the list',
+    (await value.inputValue()) === 'paid' && (await page.locator(`${B} [role="listbox"]`).count()) === 0);
+  await value.click();
+  await page.waitForSelector(`${B} [role="listbox"]`);
+  await page.keyboard.press('Escape');
+  check('Escape closes the list but not the pop-up', (await page.locator(`${B} [role="listbox"]`).count()) === 0 && (await page.locator(B).count()) === 1);
+  check('the typed value stays', (await value.inputValue()) === 'paid');
+  // the SQL follows the box after a short delay: wait for it to catch up with "paid", not an earlier keystroke
+  await page.waitForFunction(() => document.querySelector('.dialog-xl .params')?.textContent.includes('paid'));
   const sqlF = await page.locator(`${B} pre.sql`).innerText();
   check('a filter value is a parameter, not part of the SQL', /"t0"\."status" = @p1/.test(sqlF) && !/paid/.test(sqlF) && (await page.locator(`${B} .params`).innerText()).includes('paid'));
+  await page.click(`${B} button:has-text("+ Add a filter")`);
+  await page.locator(`${B} select[aria-label="Filter column"]`).nth(1).selectOption({ label: 'user_id' });
+  await page.locator(`${B} select[aria-label="Filter condition"]`).nth(1).selectOption('in');
+  const second = page.locator(`${B} input[aria-label="Value"]`).nth(1);
+  await second.focus();
+  await page.waitForSelector(`${B} [role="option"]`);
+  check('a number column suggests the numbers in it', (await options()).slice(0, 3).join(',') === '1,2,3');
+  await page.locator(`${B} [role="option"]`).filter({ hasText: /^\s*1\s*$/ }).first().click();
+  await page.locator(`${B} [role="option"]`).filter({ hasText: /^\s*2\s*$/ }).first().click();
+  check('"is one of" collects several values', (await second.inputValue()).replace(/[,\s]+$/, '') === '1, 2');
+  check('and marks the picked ones', (await page.locator(`${B} [role="option"][aria-selected="true"]`).count()) === 2);
+  await page.locator(`${B} [role="option"][aria-selected="true"]`).first().click();
+  check('picking one again takes it out', (await second.inputValue()).replace(/[,\s]+$/, '') === '2');
+  await page.locator(`${B} button[aria-label="Remove filter"]`).nth(1).click();
   await runAndWait();
   await page.click(`${B} .segmented button:has-text("Bar")`);
   await page.waitForSelector(`${B} .recharts-bar-rectangle`);

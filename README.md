@@ -38,7 +38,8 @@ Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localh
 - **Dashboards** (the home screen): **+ Add card**, choose Line chart, Bar chart, Pie chart or Table, and a pop-up
   opens with the question builder. Pick a table and it is pre-filled and already run. Press **Add to dashboard**.
   Pick related tables (joined along foreign keys, no `ON` clause to write), add filters, summaries and groupings,
-  and **Show SQL** displays exactly what will run. The date range (last 7 days ... this year, all time, or a custom
+  and **Show SQL** displays exactly what will run. Filter values are suggested from what really exists in the
+  column as you type, and a misspelling still finds the right value ("shiped" offers "shipped"). The date range (last 7 days ... this year, all time, or a custom
   range) and the period (day, week, month, quarter, year) at the top apply to every card, and are remembered per
   dashboard. **Edit** on a card reopens its question in the pop-up.
 - **Saved questions** live in the Add card pop-up: reuse one on another dashboard, or delete it.

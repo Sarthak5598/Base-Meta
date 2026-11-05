@@ -382,4 +382,68 @@ public sealed class ApiQuestionTests : IDisposable
             Assert.Contains("could not be read", Error(json));   // a message the browser can show, not an empty 400
         }
     }
+
+    // ---- filter suggestions ----------------------------------------------------------------
+
+    private static string ValuesUrl(string id, string table, string column, string? search = null, int? limit = null) =>
+        $"/api/connections/{id}/values?schema=public&table={table}&column={column}"
+        + (search is null ? "" : $"&search={Uri.EscapeDataString(search)}") + (limit is null ? "" : $"&limit={limit}");
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Values_lists_what_is_in_a_column_and_narrows_as_you_type()
+    {
+        var id = await ConnectShopAsync();
+
+        var (status, all) = await Get(ValuesUrl(id, "orders", "status"));
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Equal(new[] { "paid", "pending", "refunded", "shipped" }, all.GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+        Assert.False(all.GetProperty("hasMore").GetBoolean());
+        Assert.Equal(0, all.GetProperty("close").GetArrayLength());
+
+        var (_, narrowed) = await Get(ValuesUrl(id, "orders", "status", "pa"));
+        Assert.Equal(new[] { "paid" }, narrowed.GetProperty("values").EnumerateArray().Select(v => v.GetString()));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task A_typo_comes_back_as_did_you_mean()
+    {
+        var id = await ConnectShopAsync();
+        var (_, r) = await Get(ValuesUrl(id, "orders", "status", "shiped"));
+
+        Assert.Equal(0, r.GetProperty("values").GetArrayLength());
+        Assert.Equal(new[] { "shipped" }, r.GetProperty("close").EnumerateArray().Select(v => v.GetString()));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Number_columns_come_back_as_json_numbers()
+    {
+        var id = await ConnectShopAsync();
+        var (_, r) = await Get(ValuesUrl(id, "orders", "user_id", limit: 3));
+
+        Assert.All(r.GetProperty("values").EnumerateArray(), v => Assert.Equal(JsonValueKind.Number, v.ValueKind));
+        Assert.Equal(new[] { 1, 2, 3 }, r.GetProperty("values").EnumerateArray().Select(v => v.GetInt32()));
+        Assert.True(r.GetProperty("hasMore").GetBoolean());
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Bad_value_requests_get_a_message()
+    {
+        var id = await ConnectShopAsync();
+
+        foreach (var (url, expected) in new (string, HttpStatusCode)[]
+                 {
+                     (ValuesUrl(id, "orders", "nope"), HttpStatusCode.BadRequest),
+                     (ValuesUrl(id, "orders", "created_at"), HttpStatusCode.BadRequest),
+                     (ValuesUrl(id, "orders", "status", limit: 0), HttpStatusCode.BadRequest),
+                     (ValuesUrl(id, "orders", "status", limit: 5000), HttpStatusCode.BadRequest),
+                     (ValuesUrl(id, "orders", "status", new string('x', 101)), HttpStatusCode.BadRequest),
+                     (ValuesUrl(id, "secrets", "x"), HttpStatusCode.NotFound),
+                     (ValuesUrl("nope", "orders", "status"), HttpStatusCode.NotFound),
+                 })
+        {
+            var (code, body) = await Get(url);
+            Assert.Equal(expected, code);
+            Assert.False(string.IsNullOrWhiteSpace(Error(body)), url);
+        }
+    }
 }

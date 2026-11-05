@@ -168,6 +168,15 @@ export interface QuestionResult {
   time?: TimeInfo | null;
 }
 
+/** What exists in a column, for filter suggestions. */
+export interface FieldValues {
+  values: unknown[];
+  /** More match than are shown: keep typing to narrow them down. */
+  hasMore: boolean;
+  /** "Did you mean": spelled a little differently from what was typed. */
+  close: unknown[];
+}
+
 export type ChartType = 'table' | 'bar' | 'line' | 'pie';
 
 export interface ChartConfig {

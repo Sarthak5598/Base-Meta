@@ -21,6 +21,13 @@ public static class QuestionEndpoints
             string id, QueryDefinition query, QuestionService questions, CancellationToken ct) =>
             Results.Ok(await questions.RunAsync(id, query, ct)));
 
+        // The values that exist in a column, for filter suggestions. Names are query parameters (they may contain
+        // slashes), the search is optional, and the answer is read live from the source database.
+        api.MapGet("/connections/{id}/values", async (
+            string id, string schema, string table, string column, FieldValuesService values, CancellationToken ct,
+            string? search = null, int limit = FieldValuesService.DefaultLimit) =>
+            Results.Ok(await values.GetAsync(id, schema, table, column, search, limit, ct)));
+
         // ---- saved questions -----------------------------------------------------------------
 
         api.MapGet("/queries", async (IContentStore content, IAppStore store, CancellationToken ct, string? connection = null) =>

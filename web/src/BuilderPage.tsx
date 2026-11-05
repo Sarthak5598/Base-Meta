@@ -28,6 +28,7 @@ import {
   type FilterDraft,
 } from './query';
 import { ResultView } from './ResultView';
+import { ValueCombobox } from './ValueCombobox';
 import type {
   ChartConfig,
   Dashboard,
@@ -396,11 +397,18 @@ export function BuilderPage({ connectionId, tables, saved, startTable, onSaved, 
                     </select>
                     {info && info.inputs !== 0 && (
                       <span className="values">
-                        <ValueInput option={o} value={f.values[0] ?? ''} list={info.inputs === 'list'} onChange={(v) => updateFilter(f.id, { values: [v, f.values[1] ?? ''] })} />
+                        <ValueInput
+                          option={o}
+                          connectionId={connectionId}
+                          suggest={SUGGEST_OPS.includes(f.op)}
+                          value={f.values[0] ?? ''}
+                          list={info.inputs === 'list'}
+                          onChange={(v) => updateFilter(f.id, { values: [v, f.values[1] ?? ''] })}
+                        />
                         {info.inputs === 2 && (
                           <>
                             <span className="muted small">and</span>
-                            <ValueInput option={o} value={f.values[1] ?? ''} onChange={(v) => updateFilter(f.id, { values: [f.values[0] ?? '', v] })} />
+                            <ValueInput option={o} connectionId={connectionId} suggest={false} value={f.values[1] ?? ''} onChange={(v) => updateFilter(f.id, { values: [f.values[0] ?? '', v] })} />
                           </>
                         )}
                       </span>
@@ -696,13 +704,20 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
+/** Filters where a list of the values that exist in the column helps. Ranges and comparisons do not need one. */
+const SUGGEST_OPS = ['eq', 'notEq', 'in', 'contains', 'startsWith', 'endsWith'];
+
 function ValueInput({
   option,
+  connectionId,
+  suggest,
   value,
   onChange,
   list = false,
 }: {
   option: ColumnOption;
+  connectionId: string;
+  suggest: boolean;
   value: string;
   onChange: (v: string) => void;
   list?: boolean;
@@ -718,6 +733,20 @@ function ValueInput({
         <option value="false">false</option>
       </select>
     );
+
+  if (suggest && (kind === 'text' || kind === 'number'))
+    return (
+      <ValueCombobox
+        connectionId={connectionId}
+        table={{ schema: option.table.schema, table: option.table.name }}
+        column={option.column.name}
+        value={value}
+        onChange={onChange}
+        list={list}
+        placeholder={list ? 'a, b, c' : undefined}
+      />
+    );
+
   return (
     <input
       aria-label="Value"
@@ -729,4 +758,3 @@ function ValueInput({
     />
   );
 }
-

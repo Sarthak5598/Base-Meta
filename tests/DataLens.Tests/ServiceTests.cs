@@ -16,6 +16,9 @@ internal sealed class FakeConnector : IDatabaseConnector
     public int DescribeCalls { get; private set; }
     public CompiledQuery? LastQuery { get; private set; }
     public ExecOptions? LastOptions { get; private set; }
+    public List<CompiledQuery> Queries { get; } = new();
+    /// <summary>When set, decides what the "database" answers.</summary>
+    public Func<CompiledQuery, QueryResult>? OnExecute { get; set; }
 
     public Task<ConnectionTestResult> TestAsync(string connectionString, CancellationToken ct = default) =>
         Task.FromResult(TestResult);
@@ -31,6 +34,8 @@ internal sealed class FakeConnector : IDatabaseConnector
     {
         LastQuery = query;
         LastOptions = options;
+        Queries.Add(query);
+        if (OnExecute is not null) return Task.FromResult(OnExecute(query));
         var rows = Enumerable.Range(1, Math.Min(RowsToReturn, options.MaxRows))
             .Select(i => new object?[] { i, "row " + i }).ToList();
         return Task.FromResult(new QueryResult(new[] { "id", "name" }, rows, false, 7));

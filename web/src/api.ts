@@ -4,6 +4,7 @@ import type {
   ConnectResponse,
   Connection,
   Dashboard,
+  FieldValues,
   QueryDefinition,
   QuestionResult,
   RowsPage,
@@ -63,6 +64,13 @@ export const api = {
     const query = new URLSearchParams({ schema, table, page: String(page), pageSize: String(pageSize), dir });
     if (sort) query.set('sort', sort);
     return request<RowsPage>(`/api/connections/${enc(connectionId)}/rows?${query}`);
+  },
+
+  /** The values that exist in a column, for suggestions. `search` matches anywhere and forgives typos. */
+  values: (connectionId: string, schema: string, table: string, column: string, search: string, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ schema, table, column });
+    if (search) query.set('search', search);
+    return request<FieldValues>(`/api/connections/${enc(connectionId)}/values?${query}`, undefined, signal);
   },
 
   // ---- questions

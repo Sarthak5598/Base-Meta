@@ -27,6 +27,7 @@ builder.Services.AddSingleton<IDatabaseConnector, PostgresConnector>();
 builder.Services.AddSingleton<ConnectionService>();
 builder.Services.AddSingleton<DataExplorerService>();
 builder.Services.AddSingleton<QuestionService>();
+builder.Services.AddSingleton<FieldValuesService>();
 // Let bad requests (a malformed date, an unknown option) reach the error handler below, so the browser
 // gets a JSON message instead of a bare, empty 400.
 builder.Services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
