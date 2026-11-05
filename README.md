@@ -11,7 +11,10 @@ from it. See [`docs/design.md`](docs/design.md) for the design.
 | Connect with one connection string, test it, warn if the user can write | done |
 | Sync: read tables, columns, keys, foreign keys, indexes into a snapshot | done |
 | App database (SQLite) for saved connections (encrypted) and snapshots | done |
-| Data explorer, query builder, SQL compiler, executor, charts | next |
+| Data explorer: browse any table with paging and sorting, follow relationships | done |
+| Safe executor: read-only transaction, timeout, row cap | done |
+| Web UI (React) and API | done |
+| Query builder, SQL compiler for filters and aggregations, charts | next |
 
 ## Try it
 
@@ -21,6 +24,17 @@ You need the .NET 10 SDK and Docker.
 docker compose up -d                  # sample "shop" database on localhost:5433
 ```
 
+**In the browser.** Needs Node.js 20+ once, to build the UI.
+
+```bash
+./scripts/run.sh
+```
+
+Open <http://localhost:5080>, paste `postgresql://datalens_ro:readonly@localhost:5433/shop`, and browse. Click a
+column header to sort, click a `→ users` chip to follow a relationship. The API listens on this machine only.
+
+**From the terminal.**
+
 ```bash
 dotnet run --project src/DataLens.Cli -- connect shop \
   "postgresql://datalens_ro:readonly@localhost:5433/shop"
@@ -28,6 +42,10 @@ dotnet run --project src/DataLens.Cli -- connect shop \
 
 ```bash
 dotnet run --project src/DataLens.Cli -- show shop
+```
+
+```bash
+dotnet run --project src/DataLens.Cli -- rows shop public.orders --sort created_at --desc --size 10
 ```
 
 Other commands: `sync <name>`, `list`, `show <name> --json`. State is kept in `./.datalens/`
@@ -68,9 +86,10 @@ docs/design.md              architecture and decisions
 src/
   DataLens.Core/            models and interfaces. No dependencies. Everything else points here.
   DataLens.Infrastructure/  Postgres connector (Npgsql), SQLite app store, encryption
-  DataLens.Cli/             command line front end (used until the API exists)
-  DataLens.Api/             ASP.NET Core API (planned)
-  web/                      React + TypeScript UI (planned)
+  DataLens.Cli/             command line front end
+  DataLens.Api/             ASP.NET Core API; also serves the built UI from wwwroot
+web/                        React + TypeScript UI (Vite). `npm run build` writes into DataLens.Api/wwwroot
+scripts/run.sh              build the UI and start the API
 tests/
   DataLens.Tests/           xUnit; unit tests plus Postgres integration tests
 ```

@@ -10,7 +10,24 @@ public static class ConnectionStringParser
 {
     private const int DefaultConnectTimeoutSeconds = 5;
 
+    /// <summary>For connecting: the string as given, plus a short connect timeout if none was set.</summary>
     public static NpgsqlConnectionStringBuilder Parse(string input)
+    {
+        var builder = Normalize(input);
+
+        // Fail fast on unreachable hosts instead of waiting for Npgsql's 15s default.
+        // ContainsKey is true for every known setting, ShouldSerialize only when it was set explicitly.
+        if (!builder.ShouldSerialize("Timeout"))
+            builder.Timeout = DefaultConnectTimeoutSeconds;
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Reads and validates the string, accepting either form, and adds nothing of ours. This is what gets
+    /// stored and shown, so our defaults can change later without touching saved connections.
+    /// </summary>
+    public static NpgsqlConnectionStringBuilder Normalize(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             throw new FormatException("The connection string is empty.");
@@ -35,18 +52,13 @@ public static class ConnectionStringParser
         if (string.IsNullOrEmpty(builder.Database))
             throw new FormatException("The connection string has no database.");
 
-        // Fail fast on unreachable hosts instead of waiting for Npgsql's 15s default.
-        // ContainsKey is true for every known setting, ShouldSerialize only when it was set explicitly.
-        if (!builder.ShouldSerialize("Timeout"))
-            builder.Timeout = DefaultConnectTimeoutSeconds;
-
         return builder;
     }
 
     /// <summary>Key/value form with the password replaced, safe to show in a UI or log.</summary>
     public static string Mask(string connectionString)
     {
-        var builder = Parse(connectionString);
+        var builder = Normalize(connectionString);
         if (!string.IsNullOrEmpty(builder.Password))
             builder.Password = "****";
         return builder.ConnectionString;

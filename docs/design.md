@@ -20,6 +20,11 @@ Every chart is a live query against the source DB at request time.
 | 3 | Non-read-only role: **warn only**, do not block | Safety is enforced per query regardless (see Safety) |
 | 4 | App DB is SQLite | Fewer moving parts than a second Postgres |
 | 5 | No raw SQL editor in v1 | Query builder is the only way in |
+| 6 | Every query runs in a read-only transaction and is rolled back | Holds even if the database user can write. Tests prove it, and fail if the line is removed |
+| 7 | Browsing uses OFFSET paging, fetching one row more than the page to know if there is a next page | No `count(*)`. Browsing stops at row 100,000: sort to reach rows beyond that |
+| 8 | Paging orders by the user's sort, then the primary key | Without a total order, OFFSET pages can repeat or skip rows |
+| 9 | Row API takes `schema` and `table` as query parameters | Names can contain `/` and `.` |
+| 10 | Only the string the user typed is stored. Our defaults (5s connect timeout) are applied at connect time | Defaults can change without touching saved connections |
 
 ## Flows
 

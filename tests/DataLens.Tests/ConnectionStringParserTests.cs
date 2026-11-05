@@ -52,6 +52,15 @@ public class ConnectionStringParserTests
     }
 
     [Fact]
+    public void Normalize_and_Mask_add_nothing_the_user_did_not_type()
+    {
+        var typed = "Host=h;Database=d;Username=u;Password=pw";
+        Assert.DoesNotContain("Timeout", ConnectionStringParser.Normalize(typed).ConnectionString);
+        Assert.DoesNotContain("Timeout", ConnectionStringParser.Mask(typed));
+        Assert.Contains("Timeout=30", ConnectionStringParser.Mask(typed + ";Timeout=30"));
+    }
+
+    [Fact]
     public void Mask_hides_the_password()
     {
         var masked = ConnectionStringParser.Mask("Host=h;Database=d;Username=u;Password=hunter2");

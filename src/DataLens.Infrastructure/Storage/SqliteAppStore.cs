@@ -71,7 +71,7 @@ public sealed class SqliteAppStore : IAppStore
         string name, string connectionString, bool canWrite, CancellationToken ct = default)
     {
         var masked = ConnectionStringParser.Mask(connectionString);
-        var encrypted = _protector.Protect(ConnectionStringParser.Parse(connectionString).ConnectionString);
+        var encrypted = _protector.Protect(ConnectionStringParser.Normalize(connectionString).ConnectionString);
 
         await using var conn = await OpenAsync(ct);
         await using var cmd = conn.CreateCommand();
