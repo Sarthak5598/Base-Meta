@@ -18,7 +18,8 @@ const string Usage = """
     Connection strings: "Host=localhost;Database=shop;Username=datalens_ro;Password=..."
                      or "postgresql://user:pass@host:5432/db"
 
-    Data lives in ./.datalens (override with DATALENS_HOME).
+    Data lives in the .datalens folder at the repository root (override with DATALENS_HOME),
+    the same folder the web app uses.
     """;
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
@@ -27,7 +28,7 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
     return args.Length == 0 ? 1 : 0;
 }
 
-var home = Environment.GetEnvironmentVariable("DATALENS_HOME") ?? Path.Combine(Directory.GetCurrentDirectory(), ".datalens");
+var home = DataHome.Resolve(Environment.GetEnvironmentVariable("DATALENS_HOME"), Directory.GetCurrentDirectory());
 var protector = ConnectionProtector.Create(Path.Combine(home, "key"));
 var sqlite = new SqliteAppStore(Path.Combine(home, "app.db"), protector);
 IAppStore store = sqlite;
@@ -51,7 +52,7 @@ try
         case "demo" when args.Length == 2:
             return await Commands.DemoAsync(demo, args[1]);
         case "list" when args.Length == 1:
-            return await Commands.ListAsync(store);
+            return await Commands.ListAsync(store, home);
         default:
             Console.Error.WriteLine(Usage);
             return 1;

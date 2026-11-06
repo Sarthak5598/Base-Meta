@@ -70,8 +70,13 @@ dotnet run --project src/DataLens.Cli -- show shop
 dotnet run --project src/DataLens.Cli -- rows shop public.orders --sort created_at --desc --size 10
 ```
 
-Other commands: `sync <name>`, `list`, `show <name> --json`. State is kept in `./.datalens/`
-(the app database and the local encryption key). Set `DATALENS_KEY` (base64, 32 bytes) to supply your own key.
+Other commands: `demo <name>` (the sample dashboard), `sync <name>`, `list`, `show <name> --json`.
+Connection names match whatever the case.
+
+**Where the data lives.** The web app and the CLI share one folder, `.datalens/` at the repository root, holding the
+app database and the local encryption key. Wherever you start either from, they find the same one (it walks up to
+`DataLens.sln`). The web app prints it when it starts and `list` prints it first, so a "no saved connection" is
+easy to explain. Set `DATALENS_HOME` to use another folder, and `DATALENS_KEY` (base64, 32 bytes) to supply your own key.
 
 Connect as `shop_admin` / `admin` instead to see the write-access warning.
 `legacy_events` in the sample data has a `user_id` column with no declared foreign key, to show that

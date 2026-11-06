@@ -41,6 +41,7 @@ Every chart is a live query against the source DB at request time.
 | 25 | The sample dashboard is built from ordinary saved questions in one call, checked before anything is saved, and asking again returns the one that exists | There is something full to look at straight away, and every card can be edited. It is offered only when the connected database has the sample shop's tables |
 | 26 | A chart can combine up to 6 tables, chained along declared foreign keys (three or five are normal: order lines, products, categories; or the customer's country as well) | Relationships that are not declared as foreign keys cannot be used yet |
 | 27 | The ⋯ menu closes when something is chosen, on Escape, and on a click elsewhere. A "Saved …" notice fades after 8 seconds | |
+| 28 | The web app and the CLI share one data folder: `DATALENS_HOME`, else `.datalens` at the repository root (found by walking up to `DataLens.sln`), else beside the program. Both say which folder they use. Connection names match ignoring case, and a miss lists the saved names | `dotnet run --project X` starts a web project in X's own folder but a console project where you typed it, so "the current folder" gave two different stores and a connection saved in one was invisible to the other |
 | 10 | Only the string the user typed is stored. Our defaults (5s connect timeout) are applied at connect time | Defaults can change without touching saved connections |
 
 ## Flows

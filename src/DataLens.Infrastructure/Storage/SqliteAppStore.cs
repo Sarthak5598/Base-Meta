@@ -125,7 +125,10 @@ public sealed partial class SqliteAppStore : IAppStore, IContentStore
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT id, name, masked_cs, can_write, created_at
-            FROM connection WHERE name = $v OR id = $v
+            FROM connection
+            WHERE name = $v COLLATE NOCASE OR id = $v
+            ORDER BY (id = $v) DESC, (name = $v) DESC
+            LIMIT 1
             """;
         cmd.Parameters.AddWithValue("$v", nameOrId);
         await using var r = await cmd.ExecuteReaderAsync(ct);

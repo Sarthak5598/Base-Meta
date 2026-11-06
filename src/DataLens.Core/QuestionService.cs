@@ -24,7 +24,7 @@ internal static class SnapshotLookup
         IAppStore store, string nameOrId, CancellationToken ct)
     {
         var connection = await store.FindConnectionAsync(nameOrId, ct)
-            ?? throw new DataLensException(DataLensError.NotFound, $"No saved connection called '{nameOrId}'.");
+            ?? throw await ConnectionNotFound.CreateAsync(store, nameOrId, ct);
 
         var snapshot = await store.GetLatestSnapshotAsync(connection.Id, ct)
             ?? throw new DataLensException(DataLensError.NotFound, "This connection has not been synced yet.");

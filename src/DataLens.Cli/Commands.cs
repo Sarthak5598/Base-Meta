@@ -49,12 +49,7 @@ internal static class Commands
 
     public static async Task<int> ShowAsync(IAppStore store, string nameOrId, bool asJson)
     {
-        var saved = await store.FindConnectionAsync(nameOrId);
-        if (saved is null)
-        {
-            Console.Error.WriteLine($"No saved connection called '{nameOrId}'.");
-            return 1;
-        }
+        var saved = await store.FindConnectionAsync(nameOrId) ?? throw await ConnectionNotFound.CreateAsync(store, nameOrId);
 
         var snapshot = await store.GetLatestSnapshotAsync(saved.Id);
         if (snapshot is null)
@@ -78,8 +73,9 @@ internal static class Commands
         return 0;
     }
 
-    public static async Task<int> ListAsync(IAppStore store)
+    public static async Task<int> ListAsync(IAppStore store, string dataFolder)
     {
+        Console.WriteLine($"Data folder: {dataFolder}");
         var list = await store.ListConnectionsAsync();
         if (list.Count == 0)
         {

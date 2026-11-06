@@ -33,7 +33,7 @@ public sealed class ConnectionService(IAppStore store, IDatabaseConnector connec
     public async Task<StoredSnapshot> SyncAsync(string nameOrId, CancellationToken ct = default)
     {
         var saved = await store.FindConnectionAsync(nameOrId, ct)
-            ?? throw new DataLensException(DataLensError.NotFound, $"No saved connection called '{nameOrId}'.");
+            ?? throw await ConnectionNotFound.CreateAsync(store, nameOrId, ct);
 
         var connectionString = await store.GetConnectionStringAsync(saved.Id, ct)
             ?? throw new DataLensException(DataLensError.NotFound, "The saved connection string is missing.");

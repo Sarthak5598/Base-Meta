@@ -15,8 +15,7 @@ if (Environment.GetEnvironmentVariable("ASPNETCORE_URLS") is null)
     builder.WebHost.UseUrls("http://localhost:5080");
 
 // Same folder the CLI uses, so a connection added in one shows up in the other.
-var home = builder.Configuration["DATALENS_HOME"]   // environment variable, or a test's own setting
-    ?? Path.Combine(Directory.GetCurrentDirectory(), ".datalens");
+var home = DataHome.Resolve(builder.Configuration["DATALENS_HOME"], Directory.GetCurrentDirectory());
 
 builder.Services.AddSingleton(ConnectionProtector.Create(Path.Combine(home, "key")));
 builder.Services.AddSingleton(sp =>
@@ -136,6 +135,8 @@ app.MapFallback(async context =>
             "DataLens API is running. The web UI has not been built yet: cd web && npm install && npm run build");
     }
 });
+
+app.Logger.LogInformation("DataLens data folder: {Home}", home);
 
 app.Run();
 
