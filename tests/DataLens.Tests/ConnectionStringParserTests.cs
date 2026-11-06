@@ -93,3 +93,32 @@ public class ConnectionStringParserTests
         Assert.Throws<FormatException>(() => ConnectionStringParser.Parse(input));
     }
 }
+
+public class DroppedConnectionTests
+{
+    /// <summary>A server that accepts the connection and hangs up, as a database does while it is still starting.</summary>
+    [Fact]
+    public async Task A_server_that_hangs_up_gets_an_explanation_not_a_stream_error()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        var accepting = Task.Run(async () =>
+        {
+            while (true) (await listener.AcceptTcpClientAsync()).Dispose();
+        });
+        try
+        {
+            var result = await new DataLens.Infrastructure.Postgres.PostgresConnector()
+                .TestAsync($"Host=127.0.0.1;Port={port};Database=d;Username=u;Password=p");
+            Assert.False(result.Ok);
+            Assert.Contains("closed the connection", result.Error);
+            Assert.DoesNotContain("Exception while reading from stream", result.Error);
+        }
+        finally
+        {
+            listener.Stop();
+            try { await accepting; } catch { /* the listener was stopped */ }
+        }
+    }
+}

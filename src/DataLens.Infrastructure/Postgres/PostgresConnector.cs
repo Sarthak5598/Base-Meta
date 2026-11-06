@@ -243,6 +243,9 @@ public sealed class PostgresConnector : IDatabaseConnector
         PostgresException { SqlState: "28P01" } => "Wrong username or password.",
         PostgresException { SqlState: "28000" } => "This user is not allowed to connect to that database.",
         PostgresException { SqlState: "3D000" } => "That database does not exist on the server.",
+        NpgsqlException { InnerException: System.IO.EndOfStreamException or System.IO.IOException } =>
+            "The server closed the connection. If this database was only just started, it may still be getting ready " +
+            "(a big one can take a minute or two): wait, then try again.",
         NpgsqlException { InnerException: SocketException } => "Cannot reach the database server. Check the host and port.",
         NpgsqlException { InnerException: TimeoutException } => "The database server did not answer in time.",
         TimeoutException => "The database server did not answer in time.",

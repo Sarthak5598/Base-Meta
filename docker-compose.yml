@@ -15,7 +15,7 @@ services:
       - ./db/init:/docker-entrypoint-initdb.d:ro
       - sample-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shop_admin -d shop"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U shop_admin -d shop"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -23,6 +23,7 @@ services:
   # A big version of the same shop (about 100k customers, 2M orders, 5M order lines, 2M events, ~800 MB).
   # Not started by default. The first start takes a minute or two while it fills:
   #   docker compose --profile big up -d big-db
+# Until `docker compose ps` says "healthy", connections are dropped: it is still filling.
   # Read-only user: Host=localhost;Port=5434;Database=shop;Username=datalens_ro;Password=readonly
   big-db:
     image: postgres:16
@@ -38,7 +39,7 @@ services:
       - ./db/big/02-scale.sql:/docker-entrypoint-initdb.d/02-scale.sql:ro
       - big-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shop_admin -d shop"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U shop_admin -d shop"]
       interval: 5s
       timeout: 3s
       retries: 60
