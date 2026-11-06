@@ -1734,3 +1734,28 @@ figure.chart {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---- cleaner cards: actions appear on hover or focus, auto-refresh, full screen ---- */
+@media (hover: hover) {
+  .dash-card header .row {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .dash-card:hover header .row,
+  .dash-card:focus-within header .row {
+    opacity: 1;
+  }
+}
+.updated {
+  white-space: nowrap;
+}
+.refresh-every {
+  width: auto;
+}
+.dash-page.is-fullscreen,
+.dash-page:fullscreen {
+  background: var(--bg);
+  overflow: auto;
+  padding: 20px 28px;
+  max-width: none;
+}

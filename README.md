@@ -49,6 +49,7 @@ Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localh
     right value ("shiped" offers "shipped").
   - **Click a card** to open it large: key figures, a ranked list, every row and the SQL. Change just that chart's
     type, columns, name or date range there, then **Save changes**.
+  - **Auto-refresh** (off, or every 1 to 60 minutes), **Full screen**, and an "Updated" time sit above the board.
   - **Edit** on a card reopens its question in the pop-up.
 - **Saved questions** live in the Add card pop-up: reuse one on another dashboard, or delete it.
 - **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a

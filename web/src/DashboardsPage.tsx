@@ -71,6 +71,10 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
   const [refreshTick, setRefreshTick] = useState(0);
   const [building, setBuilding] = useState(false); // the sample dashboard is being made
   const [detailId, setDetailId] = useState<string | null>(null); // the card opened up
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null); // when a card last finished running
+  const [fullscreen, setFullscreen] = useState(false);
+  const [everyMin, setEveryMin] = useState(0); // auto-refresh interval in minutes, 0 = off
+  const page = useRef<HTMLDivElement>(null);
 
   // The ⋯ menu closes when something is chosen, when you click elsewhere, and on Escape.
   const menu = useRef<HTMLDetailsElement>(null);
@@ -93,7 +97,42 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
     };
   }, []);
 
+  // fullscreen follows the browser: Escape leaves it, and the button reflects it
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === page.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void page.current?.requestFullscreen?.();
+  };
+
   const open = dashboards?.find((d) => d.id === selectedId) ?? null;
+
+  // the refresh interval is remembered per dashboard; it re-runs every card, so it is off unless chosen
+  useEffect(() => {
+    try {
+      setEveryMin(Number(localStorage.getItem(`datalens.refresh.${selectedId}`) ?? 0) || 0);
+    } catch {
+      setEveryMin(0);
+    }
+  }, [selectedId]);
+  const chooseEvery = (minutes: number) => {
+    setEveryMin(minutes);
+    try {
+      localStorage.setItem(`datalens.refresh.${selectedId}`, String(minutes));
+    } catch {
+      /* private window: the choice just is not remembered */
+    }
+  };
+  useEffect(() => {
+    if (!everyMin) return;
+    const id = window.setInterval(() => {
+      if (!document.hidden) setRefreshTick((t) => t + 1); // a hidden tab does not keep querying the database
+    }, everyMin * 60_000);
+    return () => window.clearInterval(id);
+  }, [everyMin]);
   const settings = open ? (times[open.id] ?? loadTime(open.id)) : null;
 
   const loadAll = useCallback(async () => {
@@ -134,7 +173,10 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
       api
         .runSaved(id, filter)
         .then(({ query, result }) => {
-          if (latest.current[id] === token) setCards((c) => ({ ...c, [id]: { query, result, error: null, loading: false } }));
+          if (latest.current[id] === token) {
+            setCards((c) => ({ ...c, [id]: { query, result, error: null, loading: false } }));
+            setUpdatedAt(new Date());
+          }
         })
         .catch((e) => {
           if (latest.current[id] === token)
@@ -277,7 +319,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
   }
 
   return (
-    <div className="page dash-page">
+    <div className={`page dash-page${fullscreen ? ' is-fullscreen' : ''}`} ref={page}>
       <div className="dash-top">
         <div className="dash-title-row">
           {creating ? (
@@ -308,8 +350,30 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
 
         {open && (
           <div className="dash-buttons">
+            {updatedAt && open.cards.length > 0 && (
+              <span className="muted small updated" title="When the last card finished running">
+                Updated {updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            <select
+              className="refresh-every"
+              aria-label="Auto-refresh"
+              value={everyMin}
+              onChange={(e) => chooseEvery(Number(e.target.value))}
+              title="Re-run every card on a timer. Each refresh queries your database once per card."
+            >
+              <option value={0}>Auto-refresh off</option>
+              <option value={1}>Every 1 min</option>
+              <option value={5}>Every 5 min</option>
+              <option value={15}>Every 15 min</option>
+              <option value={30}>Every 30 min</option>
+              <option value={60}>Every hour</option>
+            </select>
             <button type="button" onClick={() => setRefreshTick((t) => t + 1)} disabled={open.cards.length === 0}>
               Refresh
+            </button>
+            <button type="button" aria-pressed={fullscreen} onClick={toggleFullscreen} disabled={open.cards.length === 0}>
+              {fullscreen ? 'Exit full screen' : 'Full screen'}
             </button>
             <button type="button" className="primary" onClick={() => setAdding(true)}>
               + Add card
