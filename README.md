@@ -47,6 +47,8 @@ Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localh
   - Pick related tables, filters, summaries and groupings; **Show SQL** displays exactly what will run. Filter
     values are suggested from what really exists in the column as you type, and a misspelling still finds the
     right value ("shiped" offers "shipped").
+  - **Click a card** to open it large: key figures, a ranked list, every row and the SQL. Change just that chart's
+    type, columns, name or date range there, then **Save changes**.
   - **Edit** on a card reopens its question in the pop-up.
 - **Saved questions** live in the Add card pop-up: reuse one on another dashboard, or delete it.
 - **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a

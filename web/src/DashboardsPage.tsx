@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { CardDetailDialog } from './CardDetailDialog';
 import { AddCardDialog, TypeIcon, TypeTiles } from './AddCardDialog';
 import { api } from './api';
 import { ChartOrTable } from './ResultView';
@@ -69,6 +70,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
   const [confirming, setConfirming] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [building, setBuilding] = useState(false); // the sample dashboard is being made
+  const [detailId, setDetailId] = useState<string | null>(null); // the card opened up
 
   // The ⋯ menu closes when something is chosen, when you click elsewhere, and on Escape.
   const menu = useRef<HTMLDetailsElement>(null);
@@ -390,6 +392,10 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
                 style={{ ['--span' as string]: cardSpan(q) }}
                 data-span={cardSpan(q)}
                 aria-busy={state?.loading}
+                onClick={(e) => {
+                  // anywhere on the card opens it, except its own buttons and a chart's hover
+                  if (q && !(e.target as HTMLElement).closest('button, a, input, select')) setDetailId(card.queryId);
+                }}
               >
                 <header>
                   <div className="card-title">
@@ -397,7 +403,15 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
                       <TypeIcon type={type} size={16} />
                     </span>
                     <div className="card-heading">
-                      <h3>{q?.name ?? 'Question'}</h3>
+                      <h3>
+                        {q ? (
+                          <button type="button" className="card-open" aria-label={`Open ${q.name} in detail`} onClick={() => setDetailId(card.queryId)}>
+                            {q.name}
+                          </button>
+                        ) : (
+                          'Question'
+                        )}
+                      </h3>
                       {time &&
                         (time.column ? (
                           <span className="muted small" title={`Date column: ${time.column}`}>
@@ -443,6 +457,30 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
           })}
         </div>
       )}
+
+      {detailId && open && settings && (() => {
+        const q = queries.find((x) => x.id === detailId);
+        return q ? (
+          <CardDetailDialog
+            key={`${q.id}:${q.name}:${JSON.stringify(q.chart)}`}
+            query={q}
+            result={cards[q.id]?.result ?? null}
+            time={settings}
+            onClose={() => setDetailId(null)}
+            onSaved={() => {
+              void loadAll().then(() => setRefreshTick((t) => t + 1));
+            }}
+            onEdit={() => {
+              setDetailId(null);
+              onEditCard(q, open);
+            }}
+            onRemove={() => {
+              setDetailId(null);
+              void removeCard(q.id);
+            }}
+          />
+        ) : null;
+      })()}
 
       {adding && open && (
         <AddCardDialog

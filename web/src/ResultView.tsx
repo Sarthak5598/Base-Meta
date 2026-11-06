@@ -45,10 +45,12 @@ interface Props {
   result: QuestionResult;
   chart: ChartConfig;
   onChart: (chart: ChartConfig) => void;
+  /** Chart height in pixels; larger in the card detail pop-up. */
+  height?: number;
 }
 
 /** The result with its controls: pick the form, then which columns go where. */
-export function ResultView({ result, chart, onChart }: Props) {
+export function ResultView({ result, chart, onChart, height }: Props) {
   const { xs, ys } = axisChoices(result.columns);
   const canChart = ys.length > 0 && xs.length > 1;
   const canNumber = ys.length > 0;
@@ -109,7 +111,7 @@ export function ResultView({ result, chart, onChart }: Props) {
       </div>
 
       <div className="result-body">
-        <ChartOrTable result={result} chart={chart} />
+        <ChartOrTable result={result} chart={chart} height={height} />
       </div>
     </div>
   );
