@@ -4,13 +4,14 @@ using DataLens.Core.Query;
 namespace DataLens.Core;
 
 /// <summary>
-/// Builds a full sample dashboard on the sample "shop" database, so there is something to look at
-/// straight away. Every card is an ordinary saved question: nothing special, and each can be edited.
+/// Builds a full sample dashboard on the sample "shop" database, or on the public AACT clinical trials
+/// database, so there is something to look at straight away. Every card is an ordinary saved question: nothing special, and each can be edited.
 /// Several of them combine three, and one five, tables through foreign keys.
 /// </summary>
 public sealed class DemoDashboardService(IAppStore store, IContentStore content)
 {
     public const string DashboardName = "Shop overview";
+    public const string TrialsDashboardName = "Clinical trials overview";
 
     private sealed record Spec(string Name, QueryDefinition Query, ChartConfig Chart);
 
@@ -19,15 +20,15 @@ public sealed class DemoDashboardService(IAppStore store, IContentStore content)
     {
         var (saved, snapshot) = await SnapshotLookup.LoadAsync(store, connection, ct);
 
-        var existing = (await content.ListDashboardsAsync(ct)).FirstOrDefault(d => d.Name == DashboardName);
-        if (existing is not null) return (existing, false);
+        var (name, specs) = Plan(snapshot.Metadata);
 
-        var specs = Specs(snapshot.Metadata);
+        var existing = (await content.ListDashboardsAsync(ct)).FirstOrDefault(d => d.Name == name);
+        if (existing is not null) return (existing, false);
 
         // every card must be valid before anything is saved, so a half-built dashboard cannot be left behind
         foreach (var spec in specs) QueryCompiler.Compile(spec.Query, snapshot.Metadata);
 
-        var dashboard = await content.CreateDashboardAsync(DashboardName, ct);
+        var dashboard = await content.CreateDashboardAsync(name, ct);
         foreach (var spec in specs)
         {
             var query = await content.SaveQueryAsync(saved.Id, spec.Name, spec.Query, spec.Chart, ct);
@@ -36,13 +37,127 @@ public sealed class DemoDashboardService(IAppStore store, IContentStore content)
         return (dashboard, true);
     }
 
+    /// <summary>Which sample dashboard fits this database: the sample shop, or the AACT clinical trials database.</summary>
+    private static (string Name, List<Spec> Specs) Plan(DbMetadata meta)
+    {
+        if (meta.FindTable("public", "orders") is null && FindStudies(meta) is { } studies)
+            return (TrialsDashboardName, TrialSpecs(meta, studies));
+        return (DashboardName, Specs(meta));   // explains what is missing if it is neither
+    }
+
+    /// <summary>True when a sample dashboard can be built on this database.</summary>
+    public static bool Supports(DbMetadata meta) =>
+        FindStudies(meta) is not null ||
+        new[] { "orders", "users", "order_items", "products", "categories", "order_totals", "legacy_events" }
+            .All(t => meta.FindTable("public", t) is not null);
+
+    // AACT keeps everything in the "ctgov" schema, with one row per study in "studies", keyed by nct_id
+    private static TableMetadata? FindStudies(DbMetadata meta) =>
+        meta.Tables.FirstOrDefault(t => t.Name == "studies" && t.Schema == "ctgov" && t.Columns.Any(c => c.Name == "nct_id"))
+        ?? meta.Tables.FirstOrDefault(t => t.Name == "studies" && t.Columns.Any(c => c.Name == "nct_id"));
+
+    /// <summary>
+    /// Cards for the AACT clinical trials database. Written from AACT's documented layout, so each card is
+    /// only built when the table and columns it needs are really there: a changed layout drops a card
+    /// instead of failing the whole dashboard. AACT declares few foreign keys, so every card is one table.
+    /// </summary>
+    private static List<Spec> TrialSpecs(DbMetadata meta, TableMetadata studies)
+    {
+        var schema = studies.Schema;
+        var specs = new List<Spec>();
+        TableRef Tr(string t) => new(schema, t);
+        bool Has(string table, string column) => meta.FindTable(schema, table)?.Columns.Any(c => c.Name == column) == true;
+        ColumnRef C(string column) => new(column, null);
+        string First(string table, params string[] columns) => columns.FirstOrDefault(c => Has(table, c)) ?? "";
+        var desc = (string column) => new[] { new SortSpec(column, SortDirection.Desc) };
+        var count = (string alias) => new Aggregation(AggFn.Count, null, alias);
+        Filter[]? leadOnly(string table) => Has(table, "lead_or_collaborator")
+            ? [new Filter(C("lead_or_collaborator"), FilterOp.Eq, new[] { System.Text.Json.JsonSerializer.SerializeToElement("lead") })]
+            : null;
+
+        void Add(bool possible, string name, QueryDefinition query, ChartConfig chart)
+        {
+            if (possible) specs.Add(new Spec(name, query, chart));
+        }
+
+        // one card, three figures
+        var figures = new List<Aggregation> { count("Studies") };
+        if (Has("studies", "enrollment"))
+        {
+            figures.Add(new Aggregation(AggFn.Sum, C("enrollment"), "Participants"));
+            figures.Add(new Aggregation(AggFn.Avg, C("enrollment"), "Average enrollment"));
+        }
+        Add(true, "Overview", new QueryDefinition(Tr("studies"), Aggregations: figures), new ChartConfig(ChartType.Number));
+
+        Add(Has("studies", "start_date"), "Studies started per year",
+            new QueryDefinition(Tr("studies"), GroupBy: new[] { new Grouping(C("start_date"), DateBucket.Year) },
+                Aggregations: new[] { count("Studies") }),
+            new ChartConfig(ChartType.Line, "start_date", "Studies"));
+
+        Add(Has("studies", "study_first_submitted_date"), "Studies registered over time",
+            new QueryDefinition(Tr("studies"), GroupBy: new[] { new Grouping(C("study_first_submitted_date"), DateBucket.Month) },
+                Aggregations: new[] { count("Studies") }),
+            new ChartConfig(ChartType.Line, "study_first_submitted_date", "Studies"));
+
+        Add(Has("studies", "overall_status"), "Studies by status",
+            new QueryDefinition(Tr("studies"), GroupBy: new[] { new Grouping(C("overall_status")) },
+                Aggregations: new[] { count("Studies") }, OrderBy: desc("Studies")),
+            new ChartConfig(ChartType.Bar, "overall_status", "Studies"));
+
+        Add(Has("studies", "study_type"), "Studies by type",
+            new QueryDefinition(Tr("studies"), GroupBy: new[] { new Grouping(C("study_type")) },
+                Aggregations: new[] { count("Studies") }),
+            new ChartConfig(ChartType.Pie, "study_type", "Studies"));
+
+        Add(Has("studies", "phase"), "Studies by phase",
+            new QueryDefinition(Tr("studies"), GroupBy: new[] { new Grouping(C("phase")) },
+                Aggregations: new[] { count("Studies") }, OrderBy: desc("Studies")),
+            new ChartConfig(ChartType.Bar, "phase", "Studies"));
+
+        Add(Has("sponsors", "name"), "Top sponsors",
+            new QueryDefinition(Tr("sponsors"), Filters: leadOnly("sponsors"), GroupBy: new[] { new Grouping(C("name")) },
+                Aggregations: new[] { count("Studies") }, OrderBy: desc("Studies"), Limit: 10),
+            new ChartConfig(ChartType.Bar, "name", "Studies"));
+
+        Add(Has("sponsors", "agent_class"), "Who sponsors trials",
+            new QueryDefinition(Tr("sponsors"), Filters: leadOnly("sponsors"), GroupBy: new[] { new Grouping(C("agent_class")) },
+                Aggregations: new[] { count("Studies") }),
+            new ChartConfig(ChartType.Pie, "agent_class", "Studies"));
+
+        var condition = First("conditions", "downcase_name", "name");
+        Add(condition != "", "Top conditions",
+            new QueryDefinition(Tr("conditions"), GroupBy: new[] { new Grouping(C(condition)) },
+                Aggregations: new[] { count("Studies") }, OrderBy: desc("Studies"), Limit: 10),
+            new ChartConfig(ChartType.Bar, condition, "Studies"));
+
+        Add(Has("countries", "name"), "Top countries",
+            new QueryDefinition(Tr("countries"), GroupBy: new[] { new Grouping(C("name")) },
+                Aggregations: new[] { count("Studies") }, OrderBy: desc("Studies"), Limit: 10),
+            new ChartConfig(ChartType.Bar, "name", "Studies"));
+
+        Add(Has("interventions", "intervention_type"), "Intervention types",
+            new QueryDefinition(Tr("interventions"), GroupBy: new[] { new Grouping(C("intervention_type")) },
+                Aggregations: new[] { count("Interventions") }),
+            new ChartConfig(ChartType.Pie, "intervention_type", "Interventions"));
+
+        var listColumns = new[] { "nct_id", "brief_title", "overall_status", "phase", "enrollment", "start_date" }
+            .Where(c => Has("studies", c)).Select(C).ToArray();
+        Add(Has("studies", "enrollment"), "Biggest studies",
+            new QueryDefinition(Tr("studies"), Columns: listColumns,
+                Filters: new[] { new Filter(C("enrollment"), FilterOp.NotNull) },
+                OrderBy: desc("enrollment"), Limit: 8),
+            new ChartConfig(ChartType.Table));
+
+        return specs;
+    }
+
     private static List<Spec> Specs(DbMetadata meta)
     {
         TableMetadata Need(string name) =>
             meta.FindTable("public", name)
             ?? throw new DataLensException(DataLensError.BadRequest,
-                $"This database does not look like the sample shop (there is no '{name}' table), so the sample dashboard cannot " +
-                "be built on it. Create a dashboard and add your own cards instead.");
+                $"This database does not look like the sample shop (there is no '{name}' table) or the AACT clinical trials " +
+                "database, so a sample dashboard cannot be built on it. Create a dashboard and add your own cards instead.");
 
         // the name of the foreign key linking two tables, whichever of them holds it
         string Link(string a, string b) =>

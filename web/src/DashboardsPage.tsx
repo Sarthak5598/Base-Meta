@@ -6,6 +6,9 @@ import { ChartOrTable } from './ResultView';
 import { GRANULARITIES, loadTime, resolveRange, saveTime, TimeBar, toTimeFilter, type TimeSettings } from './TimeControls';
 import type { ChartType, Dashboard, QuestionResult, SavedQuery } from './types';
 
+const DEMO_NAMES = { shop: 'Shop overview', trials: 'Clinical trials overview' } as const;
+const DEMO_LABELS = { shop: 'sample shop', trials: 'clinical trials' } as const;
+
 const message = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
 interface CardState {
@@ -24,8 +27,8 @@ interface Props {
   onAddCard: (type: ChartType, dashboard: Dashboard) => void;
   /** Edit a card's question in the builder. */
   onEditCard: (query: SavedQuery, dashboard: Dashboard) => void;
-  /** The one-click sample dashboard, offered when the connected database is the sample shop. */
-  demo: { connectionId: string | null; available: boolean };
+  /** The one-click sample dashboard, offered for the sample shop and for the AACT clinical trials database. */
+  demo: { connectionId: string | null; available: boolean; kind: 'shop' | 'trials' };
 }
 
 /**
@@ -247,6 +250,12 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
     setError(null);
     try {
       const made = await api.createDemoDashboard(demo.connectionId);
+      // clinical trials reach back decades: open it on every date, by year, not on the last 12 months
+      if (made.name === DEMO_NAMES.trials && !dashboards?.some((d) => d.id === made.id)) {
+        const all: TimeSettings = { preset: 'all', from: '', to: '', granularity: 'year' };
+        saveTime(made.id, all);
+        setTimes((t) => ({ ...t, [made.id]: all }));
+      }
       await loadAll();
       onSelect(made.id);
     } catch (e) {
@@ -309,7 +318,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
             <>
               <p className="muted small or">or start with something full</p>
               <button type="button" onClick={loadDemo} disabled={building}>
-                {building ? 'Building the sample dashboard…' : 'Load the sample shop dashboard'}
+                {building ? 'Building the sample dashboard…' : `Load the ${DEMO_LABELS[demo.kind]} dashboard`}
               </button>
             </>
           )}
@@ -381,7 +390,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
             <details className="menu" ref={menu}>
               <summary aria-label="More">⋯</summary>
               <div className="menu-items">
-                {demo.available && !dashboards.some((d) => d.name === 'Shop overview') && (
+                {demo.available && !dashboards.some((d) => d.name === DEMO_NAMES[demo.kind]) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -390,7 +399,7 @@ export function DashboardsPage({ version, selectedId, onSelect, onAddCard, onEdi
                     }}
                     disabled={building}
                   >
-                    {building ? 'Building…' : 'Add the sample shop dashboard'}
+                    {building ? 'Building…' : `Add the ${DEMO_LABELS[demo.kind]} dashboard`}
                   </button>
                 )}
                 {confirming ? (

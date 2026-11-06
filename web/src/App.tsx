@@ -52,12 +52,16 @@ export function App() {
   const tables = schema?.snapshot.metadata.tables ?? [];
   const ready = schema !== null && schema.connection.id === activeId;
 
-  // the one-click sample dashboard only makes sense on the sample shop database
-  const canDemo =
+  // the one-click sample dashboard: for the sample shop, or the AACT clinical trials database
+  const isShop =
     ready &&
     ['orders', 'users', 'order_items', 'products', 'categories', 'order_totals', 'legacy_events'].every((name) =>
       tables.some((t) => t.schema === 'public' && t.name === name),
     );
+  const isTrials =
+    ready && !isShop && tables.some((t) => t.name === 'studies' && t.columns.some((c) => c.name === 'nct_id'));
+  const canDemo = isShop || isTrials;
+  const demoKind = isTrials ? 'trials' : 'shop';
 
   // ---- connections and structure --------------------------------------------------------------
 
@@ -245,7 +249,7 @@ export function App() {
             onSelect={setDashboardId}
             onAddCard={addCard}
             onEditCard={editCard}
-            demo={{ connectionId: activeId, available: canDemo }}
+            demo={{ connectionId: activeId, available: canDemo, kind: demoKind }}
           />
         )}
 

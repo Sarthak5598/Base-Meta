@@ -263,3 +263,92 @@ public sealed class PostgresDemoDashboardTests : IDisposable
             units.Rows.Sum(r => Convert.ToInt64(r[1])));
     }
 }
+
+/// <summary>The AACT clinical trials database: one schema, tables linked by nct_id, almost no declared foreign keys.</summary>
+public class TrialsDashboardTests : ServiceTestBase
+{
+    private DemoDashboardService Demo => new(Store, Store);
+
+    private static ColumnMetadata C(string name, string raw, bool pk = false) => new(name, raw, TypeMapper.Map(raw), true, pk);
+
+    private static TableMetadata T(string name, params ColumnMetadata[] cols) =>
+        new("ctgov", name, TableKind.Table, cols, cols.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList(),
+            Array.Empty<ForeignKeyMetadata>(), Array.Empty<IndexMetadata>());
+
+    private static DbMetadata Aact(bool withSponsors = true) => new(new[]
+    {
+        T("studies", C("nct_id", "character varying", pk: true), C("start_date", "date"), C("study_first_submitted_date", "date"),
+          C("overall_status", "character varying"), C("study_type", "character varying"), C("phase", "character varying"),
+          C("enrollment", "integer"), C("brief_title", "text")),
+        T("conditions", C("id", "integer", pk: true), C("nct_id", "character varying"), C("name", "character varying"), C("downcase_name", "character varying")),
+        T("countries", C("id", "integer", pk: true), C("nct_id", "character varying"), C("name", "character varying")),
+        T("interventions", C("id", "integer", pk: true), C("nct_id", "character varying"), C("intervention_type", "character varying")),
+    }.Concat(withSponsors
+        ? new[] { T("sponsors", C("id", "integer", pk: true), C("nct_id", "character varying"), C("agent_class", "character varying"),
+                    C("name", "character varying"), C("lead_or_collaborator", "character varying")) }
+        : Array.Empty<TableMetadata>()).ToList());
+
+    private async Task ConnectAsync(DbMetadata meta)
+    {
+        Connector.Metadata = meta;
+        await new ConnectionService(Store, Connector).ConnectAsync("aact", Cs);
+    }
+
+    [Fact]
+    public async Task Builds_a_clinical_trials_dashboard_whose_cards_all_compile()
+    {
+        var meta = Aact();
+        await ConnectAsync(meta);
+
+        var (dashboard, created) = await Demo.CreateAsync("aact");
+
+        Assert.True(created);
+        Assert.Equal("Clinical trials overview", dashboard.Name);
+        Assert.Equal(12, dashboard.Cards.Count);
+        foreach (var q in await Store.ListQueriesAsync())
+            QueryCompiler.Compile(q.Query, meta);
+    }
+
+    [Fact]
+    public async Task Sponsor_cards_count_lead_sponsors_only()
+    {
+        await ConnectAsync(Aact());
+        await Demo.CreateAsync("aact");
+
+        var top = (await Store.ListQueriesAsync()).Single(q => q.Name == "Top sponsors");
+        var filter = Assert.Single(top.Query.Filters!);
+        Assert.Equal("lead_or_collaborator", filter.Column.Name);
+        Assert.Equal(FilterOp.Eq, filter.Op);
+    }
+
+    [Fact]
+    public async Task A_missing_table_drops_its_cards_instead_of_failing_the_dashboard()
+    {
+        await ConnectAsync(Aact(withSponsors: false));
+
+        var (dashboard, _) = await Demo.CreateAsync("aact");
+
+        Assert.Equal(10, dashboard.Cards.Count);
+        Assert.DoesNotContain(await Store.ListQueriesAsync(), q => q.Name is "Top sponsors" or "Who sponsors trials");
+    }
+
+    [Fact]
+    public async Task Asking_twice_returns_the_same_dashboard()
+    {
+        await ConnectAsync(Aact());
+        var (first, _) = await Demo.CreateAsync("aact");
+        var (second, created) = await Demo.CreateAsync("aact");
+
+        Assert.False(created);
+        Assert.Equal(first.Id, second.Id);
+        Assert.Equal(12, (await Store.ListQueriesAsync()).Count);
+    }
+
+    [Fact]
+    public void Supports_recognises_the_trials_database_and_the_shop_but_not_other_things()
+    {
+        Assert.True(DemoDashboardService.Supports(Aact()));
+        Assert.True(DemoDashboardService.Supports(Shop.Meta));
+        Assert.False(DemoDashboardService.Supports(new DbMetadata(new[] { T("people", C("id", "integer", pk: true)) })));
+    }
+}

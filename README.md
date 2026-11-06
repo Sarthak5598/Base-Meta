@@ -81,6 +81,11 @@ app database and the local encryption key. Wherever you start either from, they 
 `DataLens.sln`). The web app prints it when it starts and `list` prints it first, so a "no saved connection" is
 easy to explain. Set `DATALENS_HOME` to use another folder, and `DATALENS_KEY` (base64, 32 bytes) to supply your own key.
 
+**A real, hosted database.** [AACT](https://aact.ctti-clinicaltrials.org/sign_up) is the ClinicalTrials.gov database,
+free with an account. **+ Add** it with the host, database and username shown on your AACT account page, then press
+**Load the clinical trials dashboard**: twelve cards (studies per year, by status, phase and type, top sponsors,
+conditions and countries, the biggest studies). It opens on all dates, by year.
+
 **A big database to try it on.** The same shop, grown to about 2 million orders (~800 MB), on port 5434:
 
 ```bash
