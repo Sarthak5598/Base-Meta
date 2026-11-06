@@ -104,10 +104,29 @@ public sealed class PostgresConnector : IDatabaseConnector
         return Assemble(columns, constraints, indexes);
     }
 
+    // At most as many queries per server as the pool has connections. The rest wait their turn here, instead of
+    // opening more connections than the pool allows and failing when it runs out.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Gates = new();
+
     public async Task<QueryResult> ExecuteAsync(
         string connectionString, CompiledQuery query, ExecOptions options, CancellationToken ct = default)
     {
         var builder = ConnectionStringParser.Parse(connectionString);
+        var gate = Gates.GetOrAdd(builder.ConnectionString, _ => new SemaphoreSlim(Math.Max(1, builder.MaxPoolSize)));
+        await gate.WaitAsync(ct);
+        try
+        {
+            return await ExecuteCoreAsync(builder, query, options, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static async Task<QueryResult> ExecuteCoreAsync(
+        NpgsqlConnectionStringBuilder builder, CompiledQuery query, ExecOptions options, CancellationToken ct)
+    {
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -191,6 +210,7 @@ public sealed class PostgresConnector : IDatabaseConnector
     {
         QueryFailure.Timeout => $"The query took longer than {options.Timeout.TotalSeconds:0.#} seconds and was stopped.",
         QueryFailure.PermissionDenied => "This database user is not allowed to read that table.",
+        _ when ex.SqlState == "53300" => TooManyConnections,
         QueryFailure.ObjectNotFound => "A table or column no longer exists. Re-sync the connection and try again.",
         QueryFailure.WriteBlocked => "That statement would change data, which DataLens does not allow.",
         _ => ex.MessageText
@@ -213,8 +233,13 @@ public sealed class PostgresConnector : IDatabaseConnector
         return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
     }
 
+    private const string TooManyConnections =
+        "The database server has no free connection slots right now. Other people or tools are using them all " +
+        "(common on shared public databases). Wait a minute and try again.";
+
     private static string Explain(Exception ex) => ex switch
     {
+        PostgresException { SqlState: "53300" } => TooManyConnections,
         PostgresException { SqlState: "28P01" } => "Wrong username or password.",
         PostgresException { SqlState: "28000" } => "This user is not allowed to connect to that database.",
         PostgresException { SqlState: "3D000" } => "That database does not exist on the server.",

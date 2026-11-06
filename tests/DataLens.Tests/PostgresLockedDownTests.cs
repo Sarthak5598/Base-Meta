@@ -67,3 +67,29 @@ public class PostgresLockedDownTests
         }
     }
 }
+
+public class PostgresConnectionLimitTests
+{
+    /// <summary>
+    /// Pool of 2, connect timeout 1s, six queries of 0.7s each: the last pair would wait 1.4s for a free
+    /// connection and fail on the pool's timeout. Queued behind the gate instead, every query runs.
+    /// </summary>
+    [PgFact]
+    public async Task Queries_beyond_the_pool_size_wait_their_turn_instead_of_failing_and_never_exceed_it()
+    {
+        var app = $"gate_{Guid.NewGuid():N}";
+        var cs = new NpgsqlConnectionStringBuilder(ReadOnly!)
+        {
+            ApplicationName = app, MaxPoolSize = 2, Timeout = 1
+        }.ConnectionString;
+        var connector = new PostgresConnector();
+
+        var sql = $"SELECT pg_sleep(0.7), (SELECT count(*) FROM pg_stat_activity WHERE application_name = '{app}')";
+        var results = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => connector.ExecuteAsync(
+            cs, new CompiledQuery(sql, new Dictionary<string, object?>()), ExecOptions.Default)));
+
+        Assert.All(results, r => Assert.Single(r.Rows));
+        var most = results.Max(r => Convert.ToInt64(r.Rows[0][1]));
+        Assert.True(most <= 2, $"saw {most} connections at once");
+    }
+}

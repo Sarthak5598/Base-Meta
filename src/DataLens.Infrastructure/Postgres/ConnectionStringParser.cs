@@ -10,6 +10,11 @@ public static class ConnectionStringParser
 {
     private const int DefaultConnectTimeoutSeconds = 5;
 
+    // Servers have a limited number of connection slots, shared with everyone else using them. A dashboard of
+    // twelve cards must not take twelve, and idle ones are given back after 20 seconds, not Npgsql's 5 minutes.
+    private const int DefaultMaxPoolSize = 4;
+    private const int DefaultIdleLifetimeSeconds = 20;
+
     /// <summary>For connecting: the string as given, plus a short connect timeout if none was set.</summary>
     public static NpgsqlConnectionStringBuilder Parse(string input)
     {
@@ -19,6 +24,10 @@ public static class ConnectionStringParser
         // ContainsKey is true for every known setting, ShouldSerialize only when it was set explicitly.
         if (!builder.ShouldSerialize("Timeout"))
             builder.Timeout = DefaultConnectTimeoutSeconds;
+        if (!builder.ShouldSerialize("Maximum Pool Size"))
+            builder.MaxPoolSize = DefaultMaxPoolSize;
+        if (!builder.ShouldSerialize("Connection Idle Lifetime"))
+            builder.ConnectionIdleLifetime = DefaultIdleLifetimeSeconds;
 
         return builder;
     }

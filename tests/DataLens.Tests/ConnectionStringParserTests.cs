@@ -52,6 +52,20 @@ public class ConnectionStringParserTests
     }
 
     [Fact]
+    public void Few_connections_are_held_unless_the_user_asks_for_more()
+    {
+        var b = ConnectionStringParser.Parse("Host=h;Database=d;Username=u");
+        Assert.Equal(4, b.MaxPoolSize);
+        Assert.Equal(20, b.ConnectionIdleLifetime);
+
+        var custom = ConnectionStringParser.Parse("Host=h;Database=d;Username=u;Maximum Pool Size=12;Connection Idle Lifetime=90");
+        Assert.Equal(12, custom.MaxPoolSize);
+        Assert.Equal(90, custom.ConnectionIdleLifetime);
+
+        Assert.DoesNotContain("Pool", ConnectionStringParser.Mask("Host=h;Database=d;Username=u"));
+    }
+
+    [Fact]
     public void Normalize_and_Mask_add_nothing_the_user_did_not_type()
     {
         var typed = "Host=h;Database=d;Username=u;Password=pw";
