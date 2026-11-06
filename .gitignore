@@ -7,3 +7,4 @@ obj/
 # web UI: dependencies, and the build output that `npm run build` writes into the API
 web/node_modules/
 src/DataLens.Api/wwwroot/
+web/*.tsbuildinfo
