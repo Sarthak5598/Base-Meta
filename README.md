@@ -81,6 +81,18 @@ app database and the local encryption key. Wherever you start either from, they 
 `DataLens.sln`). The web app prints it when it starts and `list` prints it first, so a "no saved connection" is
 easy to explain. Set `DATALENS_HOME` to use another folder, and `DATALENS_KEY` (base64, 32 bytes) to supply your own key.
 
+**A big database to try it on.** The same shop, grown to about 2 million orders (~800 MB), on port 5434:
+
+```bash
+docker compose --profile big up -d big-db
+```
+
+The first start takes a minute or two while it fills. Then **+ Add** a database with
+`postgresql://datalens_ro:readonly@localhost:5434/shop` and load the sample shop dashboard on it. Opening the
+board runs twelve queries over millions of rows (measured: every card under 5 seconds), which is a fair test of
+the timeouts, the connection limits and the charts. Public online databases are often full or locked down,
+so a local one is more reliable.
+
 Connect as `shop_admin` / `admin` instead to see the write-access warning.
 `legacy_events` in the sample data has a `user_id` column with no declared foreign key, to show that
 sync only reports relationships the database actually declares.
