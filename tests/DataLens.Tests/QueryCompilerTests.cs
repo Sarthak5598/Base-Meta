@@ -38,7 +38,11 @@ internal static class Shop
         }, Fk("order_items_order_id_fkey", "order_id", "orders"), Fk("order_items_product_id_fkey", "product_id", "products")),
         T("products", new[] { C("id", "integer", pk: true), C("category_id", "integer"), C("name", "text"), C("price", "numeric") },
             Fk("products_category_id_fkey", "category_id", "categories")),
-        T("categories", new[] { C("id", "integer", pk: true), C("name", "text") })
+        T("categories", new[] { C("id", "integer", pk: true), C("name", "text") }),
+        new TableMetadata("public", "order_totals", TableKind.View,
+            new[] { C("order_id", "integer"), C("user_id", "integer"), C("status", "text"), C("created_at", "timestamp with time zone"), C("total", "numeric") },
+            Array.Empty<string>(), Array.Empty<ForeignKeyMetadata>(), Array.Empty<IndexMetadata>()),
+        T("legacy_events", new[] { C("id", "integer", pk: true), C("user_id", "integer", nullable: true), C("event", "text"), C("happened_at", "timestamp with time zone") })
     });
 
     public static TableRef Ref(string table) => new("public", table);

@@ -177,7 +177,7 @@ export interface FieldValues {
   close: unknown[];
 }
 
-export type ChartType = 'table' | 'bar' | 'line' | 'pie';
+export type ChartType = 'table' | 'bar' | 'line' | 'pie' | 'number';
 
 export interface ChartConfig {
   type: ChartType;

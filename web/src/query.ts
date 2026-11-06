@@ -396,6 +396,7 @@ export function starterFor(type: ChartType, table: Table): { draft: Partial<Draf
   if (type === 'table') return { draft: {}, note: null };
 
   const count = [{ id: newId(), fn: 'count' as const, column: null }];
+  if (type === 'number') return { draft: { aggregations: count }, note: null };   // one row, one figure
 
   if (type === 'line') {
     const date = bestDate(table);

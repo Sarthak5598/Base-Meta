@@ -12,6 +12,7 @@ const string Usage = """
       datalens show <name> [--json]                 print the stored snapshot
       datalens rows <name> <schema.table> [--page n] [--size n] [--sort column] [--desc]
                                                     print a page of rows
+      datalens demo <name>                          build the sample dashboard on the sample shop database
       datalens list                                 list saved connections
 
     Connection strings: "Host=localhost;Database=shop;Username=datalens_ro;Password=..."
@@ -28,10 +29,12 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 
 var home = Environment.GetEnvironmentVariable("DATALENS_HOME") ?? Path.Combine(Directory.GetCurrentDirectory(), ".datalens");
 var protector = ConnectionProtector.Create(Path.Combine(home, "key"));
-IAppStore store = new SqliteAppStore(Path.Combine(home, "app.db"), protector);
+var sqlite = new SqliteAppStore(Path.Combine(home, "app.db"), protector);
+IAppStore store = sqlite;
 IDatabaseConnector connector = new PostgresConnector();
 var connections = new ConnectionService(store, connector);
 var explorer = new DataExplorerService(store, connector);
+var demo = new DemoDashboardService(store, sqlite);
 
 try
 {
@@ -45,6 +48,8 @@ try
             return await Commands.ShowAsync(store, args[1], asJson: args.Length == 3 && args[2] == "--json");
         case "rows" when args.Length >= 3:
             return await Commands.RowsAsync(explorer, args);
+        case "demo" when args.Length == 2:
+            return await Commands.DemoAsync(demo, args[1]);
         case "list" when args.Length == 1:
             return await Commands.ListAsync(store);
         default:

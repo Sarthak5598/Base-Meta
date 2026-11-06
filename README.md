@@ -35,13 +35,19 @@ docker compose up -d                  # sample "shop" database on localhost:5433
 
 Open <http://localhost:5080> and paste `postgresql://datalens_ro:readonly@localhost:5433/shop`. Then:
 
-- **Dashboards** (the home screen): **+ Add card**, choose Line chart, Bar chart, Pie chart or Table, and a pop-up
-  opens with the question builder. Pick a table and it is pre-filled and already run. Press **Add to dashboard**.
-  Pick related tables (joined along foreign keys, no `ON` clause to write), add filters, summaries and groupings,
-  and **Show SQL** displays exactly what will run. Filter values are suggested from what really exists in the
-  column as you type, and a misspelling still finds the right value ("shiped" offers "shipped"). The date range (last 7 days ... this year, all time, or a custom
-  range) and the period (day, week, month, quarter, year) at the top apply to every card, and are remembered per
-  dashboard. **Edit** on a card reopens its question in the pop-up.
+- **Dashboards** (the home screen). On a fresh install, **Load the sample shop dashboard** builds a full board of
+  twelve cards in one click (or run `datalens demo shop`). **+ Add card** opens the question builder in a pop-up:
+  choose Number, Line chart, Bar chart, Donut chart or Table, pick a table, and it is pre-filled and already run.
+  Press **Add to dashboard**.
+  - **Number** shows a headline figure (13.98K); a question with several figures in one row becomes a row of them.
+  - **Date row** above the cards: quick picks (Today, Yesterday, 7D, 30D, 3M, 6M, 12M, YTD, All), a custom range,
+    and the period (day, week, month, quarter, year). They apply to every card and are remembered per dashboard.
+  - **Several tables in one chart**: add related tables (joined along foreign keys, no `ON` clause to write), up to
+    six. The sample board has three-table and five-table charts.
+  - Pick related tables, filters, summaries and groupings; **Show SQL** displays exactly what will run. Filter
+    values are suggested from what really exists in the column as you type, and a misspelling still finds the
+    right value ("shiped" offers "shipped").
+  - **Edit** on a card reopens its question in the pop-up.
 - **Saved questions** live in the Add card pop-up: reuse one on another dashboard, or delete it.
 - **Browse data**: any table, page by page. Click a column header to sort, a `→ users` chip to follow a
   relationship, or **Ask a question about this** to open the builder (it can add the result to a dashboard as it

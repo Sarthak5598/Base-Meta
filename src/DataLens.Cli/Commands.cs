@@ -69,6 +69,15 @@ internal static class Commands
         return 0;
     }
 
+    public static async Task<int> DemoAsync(DemoDashboardService demo, string connection)
+    {
+        var (dashboard, created) = await demo.CreateAsync(connection);
+        Console.WriteLine(created
+            ? $"Created the dashboard '{dashboard.Name}' with {dashboard.Cards.Count} cards. Open the web app to see it."
+            : $"'{dashboard.Name}' already exists ({dashboard.Cards.Count} cards).");
+        return 0;
+    }
+
     public static async Task<int> ListAsync(IAppStore store)
     {
         var list = await store.ListConnectionsAsync();

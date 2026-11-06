@@ -7,7 +7,10 @@ public enum ChartType
     Table,
     Bar,
     Line,
-    Pie
+    Pie,
+
+    /// <summary>One headline figure, or a few side by side when the result has several numbers in one row.</summary>
+    Number
 }
 
 /// <summary>How to draw a result. A chart is the result plus a type plus which columns go where.</summary>

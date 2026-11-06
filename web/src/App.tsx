@@ -42,8 +42,22 @@ export function App() {
   const [builder, setBuilder] = useState<BuilderRequest | null>(null);
   const [contentVersion, setContentVersion] = useState(0); // bumped when saved content changes
 
+  // "Saved ..." is news for a few seconds, not a permanent banner
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   const tables = schema?.snapshot.metadata.tables ?? [];
   const ready = schema !== null && schema.connection.id === activeId;
+
+  // the one-click sample dashboard only makes sense on the sample shop database
+  const canDemo =
+    ready &&
+    ['orders', 'users', 'order_items', 'products', 'categories', 'order_totals', 'legacy_events'].every((name) =>
+      tables.some((t) => t.schema === 'public' && t.name === name),
+    );
 
   // ---- connections and structure --------------------------------------------------------------
 
@@ -231,6 +245,7 @@ export function App() {
             onSelect={setDashboardId}
             onAddCard={addCard}
             onEditCard={editCard}
+            demo={{ connectionId: activeId, available: canDemo }}
           />
         )}
 

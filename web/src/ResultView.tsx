@@ -1,10 +1,11 @@
-import { BarView, LineView, PieView } from './ChartView';
+import { BarView, LineView, NumberView, PieView } from './ChartView';
 import { axisChoices, fitChart, MAX_CHART_ROWS, toData } from './charts';
 import { ResultGrid } from './ResultGrid';
 import type { ChartConfig, ChartType, QuestionResult } from './types';
 
 const TYPES: { value: ChartType; label: string }[] = [
   { value: 'table', label: 'Table' },
+  { value: 'number', label: 'Number' },
   { value: 'bar', label: 'Bar' },
   { value: 'line', label: 'Line' },
   { value: 'pie', label: 'Pie' },
@@ -14,6 +15,12 @@ const TYPES: { value: ChartType; label: string }[] = [
 export function ChartOrTable({ result, chart, height = 320 }: { result: QuestionResult; chart: ChartConfig; height?: number }) {
   const fitted = fitChart(chart, result.columns);
   if (fitted.type === 'table') return <ResultGrid columns={result.columns} rows={result.rows} />;
+
+  // a range with nothing in it is not an error: say so, instead of drawing empty axes
+  if (result.rows.length === 0)
+    return <p className="empty">{result.time?.rangeApplied ? 'Nothing in this date range.' : 'No rows match.'}</p>;
+
+  if (fitted.type === 'number') return <NumberView columns={result.columns} rows={result.rows} />;
 
   const data = toData(result.columns, result.rows, fitted);
   const capped = result.rows.length > MAX_CHART_ROWS;
@@ -26,7 +33,7 @@ export function ChartOrTable({ result, chart, height = 320 }: { result: Question
       {fitted.type === 'bar' && <BarView data={data} height={height} timeAxis={timeAxis} />}
       {fitted.type === 'line' && <LineView data={data} height={height} />}
       {fitted.type === 'pie' && <PieView data={data} height={height} />}
-      <figcaption className="chart-caption muted small">
+      <figcaption className={`chart-caption muted small${capped ? ' capped' : ''}`}>
         {fitted.y} by {fitted.x}
         {capped && ` · the chart shows the first ${MAX_CHART_ROWS} of ${result.rows.length.toLocaleString()} rows; the table has all of them`}
       </figcaption>
@@ -44,10 +51,11 @@ interface Props {
 export function ResultView({ result, chart, onChart }: Props) {
   const { xs, ys } = axisChoices(result.columns);
   const canChart = ys.length > 0 && xs.length > 1;
+  const canNumber = ys.length > 0;
   const fitted = fitChart(chart, result.columns);
 
   const pick = (type: ChartType) =>
-    onChart(type === 'table' ? { type } : { ...fitChart({ ...fitted, type }, result.columns), type });
+    onChart(type === 'table' || type === 'number' ? { type } : { ...fitChart({ ...fitted, type }, result.columns), type });
 
   return (
     <div className="result">
@@ -59,8 +67,14 @@ export function ResultView({ result, chart, onChart }: Props) {
               type="button"
               className={fitted.type === t.value ? 'on' : undefined}
               aria-pressed={fitted.type === t.value}
-              disabled={t.value !== 'table' && !canChart}
-              title={t.value !== 'table' && !canChart ? 'Charts need a number column and a column to group by' : undefined}
+              disabled={t.value === 'number' ? !canNumber : t.value !== 'table' && !canChart}
+              title={
+                t.value === 'number' && !canNumber
+                  ? 'A number card needs a number column'
+                  : t.value !== 'table' && t.value !== 'number' && !canChart
+                    ? 'Charts need a number column and a column to group by'
+                    : undefined
+              }
               onClick={() => pick(t.value)}
             >
               {t.label}
@@ -68,7 +82,7 @@ export function ResultView({ result, chart, onChart }: Props) {
           ))}
         </div>
 
-        {fitted.type !== 'table' && (
+        {fitted.type !== 'table' && fitted.type !== 'number' && (
           <div className="axes">
             <label className="inline-field">
               <span className="muted small">Across</span>

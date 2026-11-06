@@ -78,6 +78,13 @@ public static class QuestionEndpoints
             return Results.Ok(new { query = saved, result = await questions.RunAsync(saved.ConnectionId, saved.Query, time, ct) });
         });
 
+        // A full sample dashboard on the sample shop database. Asking again returns the one that exists.
+        api.MapPost("/connections/{id}/demo-dashboard", async (string id, DemoDashboardService demo, CancellationToken ct) =>
+        {
+            var (dashboard, created) = await demo.CreateAsync(id, ct);
+            return created ? Results.Created($"/api/dashboards/{dashboard.Id}", dashboard) : Results.Ok(dashboard);
+        });
+
         // ---- dashboards ----------------------------------------------------------------------
 
         api.MapGet("/dashboards", async (IContentStore content, CancellationToken ct) =>

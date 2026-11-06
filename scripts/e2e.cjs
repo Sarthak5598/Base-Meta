@@ -191,7 +191,7 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
   await page.fill('#dash-name', 'Sales overview');
   await page.click('button:has-text("Create")');
   await page.waitForSelector('.empty-dash h2:has-text("Add your first card")');
-  check('an empty dashboard offers the four kinds of card right there', (await page.locator('.empty-dash .type-tile').count()) === 4);
+  check('an empty dashboard offers the five kinds of card right there', (await page.locator('.empty-dash .type-tile').count()) === 5);
   check('time controls are always there, monthly over the last 12 months by default',
     (await page.locator('.range-name').innerText()) === 'Last 12 months'
     && (await page.locator('.segmented[aria-label="Group by time period"] button.on').innerText()) === 'Month');
@@ -225,17 +225,19 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
   await page.waitForSelector(B, { state: 'detached' });
   await page.waitForSelector('.dash-card path.recharts-line-curve');
   check('the card lands on the dashboard, drawn as a line, and says which date column the range uses',
-    (await page.locator('.dash-card h3:has-text("Orders per month")').count()) === 1 && (await page.locator('.dash-card').innerText()).includes('by orders.created_at'));
+    (await page.locator('.dash-card h3:has-text("Orders per month")').count()) === 1
+    && (await page.locator('.dash-card').innerText()).includes('Last 12 months · by month')
+    && (await page.locator('.dash-card [title="Date column: orders.created_at"]').count()) === 1);
 
   await addCardFromTopButton('Bar chart');
   await pickTableAndAdd('users', '.recharts-bar-rectangle', 'Users by country');
   await page.waitForSelector('.dash-card:has-text("Users by country") .recharts-bar-rectangle');
-  await addCardFromTopButton('Pie chart');
+  await addCardFromTopButton('Donut chart');
   await pickTableAndAdd('orders', '.recharts-pie-sector', 'Orders by status');
   await addCardFromTopButton('Table');
   await pickTableAndAdd('legacy_events', 'table.grid', 'Legacy events');
   await page.waitForSelector('.dash-card:has-text("Legacy events") table.grid');
-  check('a table card uses the table\'s own date column', (await page.locator('.dash-card:has-text("Legacy events")').innerText()).includes('by legacy_events.happened_at'));
+  check('a table card uses the table\'s own date column', (await page.locator('.dash-card:has-text("Legacy events") [title="Date column: legacy_events.happened_at"]').count()) === 1);
   await addCardFromTopButton('Table');
   await pickTableAndAdd('order_items', 'table.grid', null);
   await page.waitForSelector('.dash-card:has-text("Order items") footer');   // its first result has arrived
@@ -351,8 +353,61 @@ const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ?
   await page.waitForSelector('.dash-card');
   check('deleting a dashboard goes back to the other one', (await page.locator('.dash-title option').count()) === 1);
 
+  // ======================= the sample dashboard, quick ranges, and the board layout ===========
+  await page.click('.menu summary');
+  await page.click('.menu-items button:has-text("Add the sample shop dashboard")');
+  await page.waitForFunction(() => document.querySelector('.dash-title')?.selectedOptions[0]?.textContent === 'Shop overview');
+  await page.waitForFunction(() => document.querySelectorAll('.dash-card').length === 12 && !document.querySelector('.dash-card.loading'));
+  check('one click builds the sample dashboard of twelve cards', (await page.locator('.dash-card').count()) === 12);
+  check('every card on it loads', (await page.locator('.card-error').count()) === 0);
+  await page.click('.menu summary');
+  check('the offer goes away once it exists', (await page.locator('.menu-items button:has-text("Add the sample shop dashboard")').count()) === 0);
+  await page.keyboard.press('Escape');
+
+  const kpi = (label) => page.locator(`.dash-card:has-text("Overview") .kpi:has-text("${label}") .kpi-value`).innerText();
+  const labels = await page.locator('.dash-card:has-text("Overview") .kpi-label').allInnerTexts();
+  check('the Overview card shows four headline figures side by side', JSON.stringify(labels) === JSON.stringify(['Orders', 'Revenue', 'Average order value', 'Customers']), JSON.stringify(labels));
+  check('big figures are compact, like 243.53K', /K$/.test(await kpi('Revenue')), await kpi('Revenue'));
+  await shot('6-sample-dashboard');
+
+  const donutTotal = async () => Number((await page.locator('.dash-card:has-text("Orders by status") .pie-total').innerText()).replace(/,/g, ''));
+  const legendSum = async () => (await page.locator('.dash-card:has-text("Orders by status") .legend-value').allInnerTexts()).reduce((s, v) => s + Number(v.replace(/,/g, '')), 0);
+  check('the donut shows its total in the middle, and it matches its slices', (await donutTotal()) > 0 && (await donutTotal()) === (await legendSum()));
+
+  check('a three-table chart draws (order lines, products, categories)', (await page.locator('.dash-card:has-text("Units sold by category") .recharts-bar-rectangle').count()) >= 4);
+  check('and a five-table chart draws (coffee by customer country)', (await page.locator('.dash-card:has-text("Coffee units sold by country") .recharts-bar-rectangle').count()) >= 3);
+
+  const width = async (name) => (await page.locator(`.dash-card:has-text("${name}")`).first().boundingBox()).width;
+  const gridWidth = (await page.locator('.card-grid').boundingBox()).width;
+  const overviewW = await width('Overview'), lineW = await width('Orders per month'), donutW = await width('Orders by status');
+  check('the board has mixed card widths: full row, half, third',
+    overviewW > gridWidth * 0.95 && lineW > gridWidth * 0.4 && lineW < gridWidth * 0.55 && donutW > gridWidth * 0.28 && donutW < gridWidth * 0.4,
+    `grid ${Math.round(gridWidth)}: overview ${Math.round(overviewW)}, line ${Math.round(lineW)}, donut ${Math.round(donutW)}`);
+
+  const chip = (label) => page.locator(`.segmented.quick button:has-text("${label}")`);
+  const ordersFigure = async () => Number((await kpi('Orders')).replace(/,/g, ''));
+  const loaded = () => page.waitForFunction(() => !document.querySelector('.dash-card.loading'));
+  check('12M is selected to begin with', (await chip('12M').getAttribute('aria-pressed')) === 'true');
+  const orders12m = await ordersFigure();
+  await chip('7D').click(); await loaded();
+  const orders7d = await ordersFigure();
+  check('the 7D chip narrows every card (orders drop)', orders7d > 0 && orders7d < orders12m, `${orders7d} < ${orders12m}`);
+  check('and the range button follows', (await page.locator('.range-name').innerText()) === 'Last 7 days');
+  await chip('Today').click(); await loaded();
+  check('Today is fine: nothing breaks, empty cards say so',
+    (await page.locator('.card-error').count()) === 0 && (await page.locator('.dash-card .empty:has-text("Nothing in this date range")').count()) >= 1);
+  await shot('7-today');
+  for (const label of ['Yesterday', '30D', '3M', '6M', 'YTD']) {
+    await chip(label).click(); await loaded();
+    check(`${label} loads every card`, (await page.locator('.card-error').count()) === 0 && (await chip(label).getAttribute('aria-pressed')) === 'true');
+  }
+  await chip('All').click(); await loaded();
+  check('All brings back every order', (await kpi('Orders')) === '2,000', await kpi('Orders'));
+  await page.locator('.segmented[aria-label="Group by time period"] button:has-text("Week")').click(); await loaded();
+  check('the card subtitles say the range and the period', /by week/.test(await page.locator('.dash-card:has-text("Orders per month")').innerText()));
+
   console.log('\nconsole/page errors:', problems.length ? problems : 'none');
   console.log(`${results.filter(Boolean).length}/${results.length} checks passed`);
   await browser.close();
   process.exit(results.every(Boolean) && problems.length === 0 ? 0 : 1);
-})().catch(e => { console.error('SCRIPT FAILED:', e.message.split('\n')[0]); process.exit(2); });
+})().catch(e => { console.error('SCRIPT FAILED:', e.message.split('\n').slice(0,5).join(' | ')); process.exit(2); });

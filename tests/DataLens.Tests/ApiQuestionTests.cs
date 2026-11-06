@@ -446,4 +446,51 @@ public sealed class ApiQuestionTests : IDisposable
             Assert.False(string.IsNullOrWhiteSpace(Error(body)), url);
         }
     }
+
+    // ---- the sample dashboard ----------------------------------------------------------------
+
+    [PostgresConnectorTests.PgFact]
+    public async Task The_sample_dashboard_is_built_in_one_call_and_every_card_runs()
+    {
+        var id = await ConnectShopAsync();
+
+        var (status, dashboard) = await Post($"/api/connections/{id}/demo-dashboard", "{}");
+        Assert.Equal(HttpStatusCode.Created, status);
+        Assert.Equal("Shop overview", dashboard.GetProperty("name").GetString());
+        var cards = dashboard.GetProperty("cards").EnumerateArray().Select(c => c.GetProperty("queryId").GetString()!).ToList();
+        Assert.Equal(12, cards.Count);
+
+        var today = DateTime.UtcNow.Date;
+        var kinds = new List<string>();
+        foreach (var card in cards)
+        {
+            var (runStatus, run) = await Post($"/api/queries/{card}/run",
+                $$"""{ "from": "{{today.AddMonths(-11):yyyy-MM}}-01", "to": "{{today:yyyy-MM-dd}}", "granularity": "month" }""");
+            Assert.Equal(HttpStatusCode.OK, runStatus);
+            kinds.Add(run.GetProperty("query").GetProperty("chart").GetProperty("type").GetString()!);
+        }
+        Assert.Equal(new[] { "bar", "line", "number", "pie", "table" }, kinds.Distinct().OrderBy(k => k));
+    }
+
+    [PostgresConnectorTests.PgFact]
+    public async Task Asking_for_the_sample_dashboard_twice_returns_the_same_one()
+    {
+        var id = await ConnectShopAsync();
+        var (first, a) = await Post($"/api/connections/{id}/demo-dashboard", "{}");
+        var (second, b) = await Post($"/api/connections/{id}/demo-dashboard", "{}");
+
+        Assert.Equal(HttpStatusCode.Created, first);
+        Assert.Equal(HttpStatusCode.OK, second);
+        Assert.Equal(a.GetProperty("id").GetString(), b.GetProperty("id").GetString());
+        Assert.Equal(1, (await Get("/api/dashboards")).Body.GetArrayLength());
+        Assert.Equal(12, (await Get("/api/queries")).Body.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task The_sample_dashboard_on_an_unknown_connection_is_a_404()
+    {
+        var (status, body) = await Post("/api/connections/nope/demo-dashboard", "{}");
+        Assert.Equal(HttpStatusCode.NotFound, status);
+        Assert.Contains("nope", Error(body));
+    }
 }

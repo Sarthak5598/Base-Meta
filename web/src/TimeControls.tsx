@@ -4,7 +4,7 @@ import type { DateBucket } from './types';
 // A dashboard's time controls: a date range and a granularity. They apply to every card when it runs;
 // the saved questions themselves are never changed (the same rule Mixpanel's boards follow).
 
-export type RangePreset = '7d' | '30d' | '90d' | '12m' | 'mtd' | 'ytd' | 'all' | 'custom';
+export type RangePreset = 'today' | 'yesterday' | '7d' | '30d' | '90d' | '3m' | '6m' | '12m' | 'mtd' | 'ytd' | 'all' | 'custom';
 
 export interface TimeSettings {
   preset: RangePreset;
@@ -17,13 +17,30 @@ export interface TimeSettings {
 export const DEFAULT_TIME: TimeSettings = { preset: '12m', from: '', to: '', granularity: 'month' };
 
 export const PRESETS: { value: RangePreset; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
   { value: '7d', label: 'Last 7 days' },
   { value: '30d', label: 'Last 30 days' },
   { value: '90d', label: 'Last 90 days' },
+  { value: '3m', label: 'Last 3 months' },
+  { value: '6m', label: 'Last 6 months' },
   { value: '12m', label: 'Last 12 months' },
   { value: 'mtd', label: 'This month' },
   { value: 'ytd', label: 'This year' },
   { value: 'all', label: 'All time' },
+];
+
+/** The quick picks shown inline, like a row of buttons above the cards. */
+export const QUICK: { value: RangePreset; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: '7d', label: '7D' },
+  { value: '30d', label: '30D' },
+  { value: '3m', label: '3M' },
+  { value: '6m', label: '6M' },
+  { value: '12m', label: '12M' },
+  { value: 'ytd', label: 'YTD' },
+  { value: 'all', label: 'All' },
 ];
 
 export const GRANULARITIES: { value: DateBucket; label: string }[] = [
@@ -62,6 +79,13 @@ export function resolveRange(s: TimeSettings, now: Date = new Date()): ResolvedR
   let name = PRESETS.find((p) => p.value === s.preset)?.label ?? 'Custom range';
 
   switch (s.preset) {
+    case 'today':
+      from = today;
+      break;
+    case 'yesterday':
+      from = daysBack(1);
+      to = daysBack(1);
+      break;
     case '7d':
       from = daysBack(6);
       break;
@@ -74,6 +98,11 @@ export function resolveRange(s: TimeSettings, now: Date = new Date()): ResolvedR
     case '12m':
       // the first day of the month eleven months ago: exactly twelve monthly points, this month included
       from = utcDay(today.getUTCFullYear(), today.getUTCMonth() - 11, 1);
+      break;
+    case '3m':
+    case '6m':
+      // like 12 months: whole months back from this one, so a monthly view has exactly 3 or 6 points
+      from = utcDay(today.getUTCFullYear(), today.getUTCMonth() - (s.preset === '3m' ? 2 : 5), 1);
       break;
     case 'mtd':
       from = utcDay(today.getUTCFullYear(), today.getUTCMonth(), 1);
@@ -226,6 +255,20 @@ export function TimeBar({ settings, onChange }: Props) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="segmented quick" role="group" aria-label="Quick date ranges">
+        {QUICK.map((q) => (
+          <button
+            key={q.value}
+            type="button"
+            className={settings.preset === q.value ? 'on' : undefined}
+            aria-pressed={settings.preset === q.value}
+            onClick={() => onChange({ ...settings, preset: q.value })}
+          >
+            {q.label}
+          </button>
+        ))}
       </div>
 
       <div className="segmented" role="group" aria-label="Group by time period">

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using DataLens.Core;
 using DataLens.Core.Models;
 using DataLens.Core.Query;
 using DataLens.Infrastructure.Security;
@@ -56,6 +57,25 @@ public sealed class ContentStoreTests : IDisposable
         Assert.Equal(12, loaded.Query.Limit);
         // filter values survive as JSON values
         Assert.Equal(new[] { "paid", "shipped" }, loaded.Query.Filters![0].Values!.Select(v => v.GetString()));
+    }
+
+    [Theory]
+    [InlineData(ChartType.Table)]
+    [InlineData(ChartType.Bar)]
+    [InlineData(ChartType.Line)]
+    [InlineData(ChartType.Pie)]
+    [InlineData(ChartType.Number)]
+    public async Task Every_chart_type_survives_being_saved(ChartType type)
+    {
+        _connectionId = await ConnectionAsync();
+        var saved = await _store.SaveQueryAsync(_connectionId, "x", Query(), new ChartConfig(type));
+        Assert.Equal(type, (await _store.GetQueryAsync(saved.Id))!.Chart.Type);
+    }
+
+    [Fact]
+    public void The_number_chart_is_written_as_a_lowercase_word_in_json()
+    {
+        Assert.Contains("\"type\":\"number\"", JsonSerializer.Serialize(new ChartConfig(ChartType.Number), DataLensJson.Options));
     }
 
     [Fact]

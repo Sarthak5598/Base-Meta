@@ -95,6 +95,11 @@ export const api = {
     request<{ query: SavedQuery; result: QuestionResult }>(`/api/queries/${enc(id)}/run`, json('POST', time)),
 
   // ---- dashboards
+
+  /** A full sample dashboard on the sample shop database. Asking again returns the one that exists. */
+  createDemoDashboard: (connectionId: string) =>
+    request<Dashboard>(`/api/connections/${enc(connectionId)}/demo-dashboard`, json('POST', {})),
+
   dashboards: () => request<Dashboard[]>('/api/dashboards'),
 
   createDashboard: (name: string) => request<Dashboard>('/api/dashboards', json('POST', { name })),

@@ -13,7 +13,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { axisNumber, foldSlices, formatValue, type Datum } from './charts';
+import { axisNumber, foldSlices, formatKpi, formatValue, type Datum } from './charts';
+import type { ResultColumn } from './types';
 
 // Marks follow the data-viz spec: thin bars (<= 24px) with a 4px rounded data end and a square
 // baseline, 2px lines, 8px end dots with a 2px surface ring, hairline recessive grid, one series colour.
@@ -101,7 +102,7 @@ export function LineView({ data, height }: { data: Datum[]; height: number }) {
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data} margin={{ top: 20, right: 40, bottom: 8, left: 0 }}>
+      <LineChart data={data} margin={{ top: 20, right: 48, bottom: 8, left: 0 }}>
         <CartesianGrid vertical={false} stroke={GRID} strokeWidth={1} />
         <XAxis
           dataKey="name"
@@ -132,7 +133,7 @@ export function LineView({ data, height }: { data: Datum[]; height: number }) {
               if (index !== last || x === undefined || y === undefined) return null;
               return (
                 <text x={x + 10} y={y + 4} fill="var(--text-secondary)" fontSize={11} textAnchor="start">
-                  {formatValue(Number(value))}
+                  {formatKpi(Number(value))}
                 </text>
               );
             }}
@@ -140,6 +141,29 @@ export function LineView({ data, height }: { data: Datum[]; height: number }) {
         </Line>
       </LineChart>
     </ResponsiveContainer>
+  );
+}
+
+/** One headline figure, or several side by side (a row of numbers is "Orders, Revenue, Customers"). */
+export function NumberView({ columns, rows }: { columns: ResultColumn[]; rows: unknown[][] }) {
+  const row = rows[0] ?? [];
+  const tiles = columns.map((c, i) => ({ column: c, value: row[i] })).filter((t) => t.column.kind === 'number');
+  if (tiles.length === 0) return <p className="empty">This question has no number to show.</p>;
+
+  return (
+    <div className="kpis" style={{ ['--kpis' as string]: Math.min(tiles.length, 4) }}>
+      {tiles.map(({ column, value }) => {
+        const n = value === null || value === undefined ? null : Number(value);
+        return (
+          <div className="kpi" key={column.name}>
+            <div className="kpi-label">{column.name}</div>
+            <div className="kpi-value" title={n === null ? undefined : formatValue(n)}>
+              {n === null ? '—' : formatKpi(n)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -156,6 +180,11 @@ export function PieView({ data, height }: { data: Datum[]; height: number }) {
   return (
     <div className="pie">
       <div className="pie-plot">
+        {/* the total sits in the hole of the donut */}
+        <div className="pie-center" aria-hidden="true">
+          <div className="pie-total">{formatKpi(total)}</div>
+          <div className="muted small">total</div>
+        </div>
         <ResponsiveContainer width="100%" height={height}>
           <PieChart>
             <Tooltip content={<Tip total={total} />} isAnimationActive={false} />
@@ -163,7 +192,8 @@ export function PieView({ data, height }: { data: Datum[]; height: number }) {
               data={slices}
               dataKey="value"
               nameKey="name"
-              outerRadius="85%"
+              innerRadius="58%"
+              outerRadius="88%"
               stroke="var(--surface)"
               strokeWidth={2}
               isAnimationActive={false}

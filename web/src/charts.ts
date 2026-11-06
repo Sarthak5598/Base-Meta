@@ -16,6 +16,9 @@ export function axisChoices(columns: ResultColumn[]) {
  * (an `id` column is a number too) is a table, not a chart.
  */
 export function suggestChart(columns: ResultColumn[], rowCount: number, summarised: boolean): ChartConfig {
+  // one row of nothing but numbers ("orders, revenue, customers") is a headline figure
+  if (summarised && rowCount === 1 && columns.length > 0 && columns.every((c) => c.kind === 'number')) return { type: 'number' };
+
   const y = columns.find((c) => c.kind === 'number');
   const x = columns.find((c) => c !== y && c.kind !== 'number') ?? columns.find((c) => c !== y);
   if (!summarised || !x || !y || rowCount === 0 || rowCount > MAX_CHART_ROWS) return { type: 'table' };
@@ -25,6 +28,7 @@ export function suggestChart(columns: ResultColumn[], rowCount: number, summaris
 /** Keeps the chart choice if it still fits this result, otherwise falls back sensibly. */
 export function fitChart(chart: ChartConfig, columns: ResultColumn[]): ChartConfig {
   if (chart.type === 'table') return chart;
+  if (chart.type === 'number') return columns.some((c) => c.kind === 'number') ? { type: 'number' } : { type: 'table' };
   const { xs, ys } = axisChoices(columns);
   const x = xs.find((c) => c.name === chart.x) ?? xs.find((c) => !ys.includes(c)) ?? xs[0];
   const y = ys.find((c) => c.name === chart.y && c !== x) ?? ys.find((c) => c !== x);
@@ -37,6 +41,14 @@ const full = new Intl.NumberFormat('en', { maximumFractionDigits: 2 });
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
 export const formatValue = (n: number) => full.format(n);
+
+const kpiCompact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 });
+
+/** A headline figure: 842, 3,214, 13.98K, 13.05M. Small whole numbers in full, big ones compact. */
+export function formatKpi(n: number): string {
+  if (Math.abs(n) >= 10_000) return kpiCompact.format(n);
+  return full.format(n);
+}
 
 /** Whole numbers in full under 10,000, compact beyond; one style per axis. */
 export function axisNumber(max: number) {
