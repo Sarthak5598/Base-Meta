@@ -9,6 +9,49 @@ namespace DataLens.Infrastructure.Postgres;
 
 public sealed class PostgresConnector : IDatabaseConnector
 {
+    // Connection strings that needed Npgsql's type loading switched off (see OpenAsync).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> NoTypeLoading = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, NpgsqlDataSource> RelaxedSources = new();
+
+    /// <summary>
+    /// Opens a connection. Npgsql reads type information from the catalogs (pg_type, pg_proc) when it connects,
+    /// and locked-down servers, such as public read-only databases, refuse that with "permission denied for table
+    /// pg_proc". Then we connect again without type loading: built-in types (numbers, text, dates, JSON, arrays of
+    /// those) work the same, and anything exotic comes back as text. The result is remembered per server.
+    /// </summary>
+    private static async Task<NpgsqlConnection> OpenAsync(NpgsqlConnectionStringBuilder builder, CancellationToken ct)
+    {
+        var key = builder.ConnectionString;
+        if (!NoTypeLoading.ContainsKey(key))
+        {
+            var conn = new NpgsqlConnection(key);
+            try
+            {
+                await conn.OpenAsync(ct);
+                return conn;
+            }
+            catch (PostgresException ex) when (ex.SqlState == "42501")
+            {
+                await conn.DisposeAsync();
+                NoTypeLoading[key] = true;
+            }
+            catch
+            {
+                await conn.DisposeAsync();
+                throw;
+            }
+        }
+
+        // A data source per server keeps Npgsql's connection pool working for these connections too.
+        var source = RelaxedSources.GetOrAdd(key, k =>
+        {
+            var b = new NpgsqlDataSourceBuilder(k);
+            b.ConfigureTypeLoading(t => t.EnableTypeLoading(false));
+            return b.Build();
+        });
+        return await source.OpenConnectionAsync(ct);
+    }
+
     public async Task<ConnectionTestResult> TestAsync(string connectionString, CancellationToken ct = default)
     {
         NpgsqlConnectionStringBuilder builder;
@@ -23,8 +66,7 @@ public sealed class PostgresConnector : IDatabaseConnector
 
         try
         {
-            await using var conn = new NpgsqlConnection(builder.ConnectionString);
-            await conn.OpenAsync(ct);
+            await using var conn = await OpenAsync(builder, ct);
 
             await using (var ping = new NpgsqlCommand("SELECT 1", conn))
                 await ping.ExecuteScalarAsync(ct);
@@ -47,8 +89,7 @@ public sealed class PostgresConnector : IDatabaseConnector
     public async Task<DbMetadata> DescribeAsync(string connectionString, CancellationToken ct = default)
     {
         var builder = ConnectionStringParser.Parse(connectionString);
-        await using var conn = new NpgsqlConnection(builder.ConnectionString);
-        await conn.OpenAsync(ct);
+        await using var conn = await OpenAsync(builder, ct);
 
         // One read-only transaction so all four reads see the same state of the catalogs.
         await using var tx = await conn.BeginTransactionAsync(ct);
@@ -72,8 +113,7 @@ public sealed class PostgresConnector : IDatabaseConnector
         try
         {
             // Npgsql pools physical connections per connection string, so opening one per call is cheap.
-            await using var conn = new NpgsqlConnection(builder.ConnectionString);
-            await conn.OpenAsync(ct);
+            await using var conn = await OpenAsync(builder, ct);
 
             // The guarantee that DataLens never changes the user's data, even if the database user
             // is allowed to: every query runs read-only and is rolled back, never committed.
